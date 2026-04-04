@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wildlands Forge</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Unbounded:wght@500;700&display=swap"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <div class="canvas-wrap" id="canvas-wrap"></div>
+
+      <section class="hud">
+        <div class="title">Wildlands Forge</div>
+        <p class="subtitle">
+          Procedural <span id="map-size">200x200</span> tile world. Click the
+          map to evolve tiles with the selected mode.
+        </p>
+
+        <div class="controls">
+          <label class="field">
+            <span>Mode</span>
+            <select id="mode">
+              <option value="raise">Raise land</option>
+              <option value="lower">Lower land</option>
+              <option value="water">Paint water</option>
+              <option value="sand">Paint sand</option>
+              <option value="grass">Paint grass</option>
+              <option value="forest">Plant forest</option>
+              <option value="rock">Scatter rocks</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Renderer</span>
+            <select id="renderer">
+              <option value="instanced">Instanced (fast)</option>
+              <option value="merged">Merged (safe)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Generation</span>
+            <div class="gen-row">
+              <button id="gen-prev" type="button">-1</button>
+              <div class="gen-display">
+                Gen <span id="gen-index">0</span>
+              </div>
+              <button id="gen-next" type="button">+1</button>
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Height delta</span>
+            <div class="range-row">
+              <input
+                id="delta"
+                type="range"
+                min="0.02"
+                max="0.2"
+                step="0.02"
+                value="0.08"
+              />
+              <span id="delta-value">0.08</span>
+            </div>
+          </label>
+
+          <div class="field row apply-row">
+            <label>
+              <span>X</span>
+              <input id="coord-x" type="number" min="0" max="199" value="0" />
+            </label>
+            <label>
+              <span>Y</span>
+              <input id="coord-y" type="number" min="0" max="199" value="0" />
+            </label>
+            <button id="apply">Apply</button>
+          </div>
+
+          <div class="field row button-row">
+            <button id="regenerate">Regenerate</button>
+            <button id="save">Save</button>
+            <button id="load">Load</button>
+            <button id="clear">Clear Save</button>
+          </div>
+        </div>
+
+        <div class="readout">
+          <div>Hover: <span id="hover">-</span></div>
+          <div>Last: <span id="last">-</span></div>
+          <div class="note" id="renderer-note"></div>
+        </div>
+
+        <div class="legend">
+          <div class="legend-item">
+            <span class="swatch water"></span>Water
+          </div>
+          <div class="legend-item">
+            <span class="swatch shallow"></span>Shallow water
+          </div>
+          <div class="legend-item">
+            <span class="swatch sand"></span>Sand
+          </div>
+          <div class="legend-item">
+            <span class="swatch grass"></span>Grass
+          </div>
+          <div class="legend-item">
+            <span class="swatch forest"></span>Forest
+          </div>
+          <div class="legend-item">
+            <span class="swatch rock"></span>Rock
+          </div>
+          <div class="legend-item">
+            <span class="swatch snow"></span>Snow
+          </div>
+          <div class="legend-item">
+            <span class="swatch lava"></span>Lava
+          </div>
+          <div class="legend-item">
+            <span class="swatch sakura"></span>Sakura
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
