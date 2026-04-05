@@ -17,6 +17,8 @@
   --snow: #e6eef2;
   --lava: #d55a3a;
   --sakura: #d98ab7;
+  --fire: #e35b2f;
+  --dirt: #7a5b3b;
 }
 
 *,
@@ -242,6 +244,14 @@ button:hover {
 
 .swatch.lava {
   background: var(--lava);
+}
+
+.swatch.fire {
+  background: var(--fire);
+}
+
+.swatch.dirt {
+  background: var(--dirt);
 }
 
 .swatch.sakura {

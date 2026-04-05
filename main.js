@@ -19,11 +19,19 @@ const BIOMES = [
   { name: "lava", color: "#d55a3a" },
   { name: "shallow", color: "#6fa7d9" },
   { name: "sakura", color: "#d98ab7" },
+  { name: "fire", color: "#e35b2f" },
+  { name: "dirt", color: "#7a5b3b" },
 ];
 
-const BIOME_BASE_HEIGHT = [0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34];
-const BIOME_JITTER = [0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03];
-const BIOME_BASELINE_WEIGHT = [0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32];
+const BIOME_BASE_HEIGHT = [
+  0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24,
+];
+const BIOME_JITTER = [
+  0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02,
+];
+const BIOME_BASELINE_WEIGHT = [
+  0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3,
+];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
 const BASELINE_EXP = 1.25;
@@ -50,6 +58,7 @@ const LAVA_FLOW_CHANCE = 0.7;
 const LAVA_PERSIST_CHANCE = 0.99;
 const LAVA_FROM_HIGHER_CHANCE = 0.4;
 const LAVA_PERSIST_WITH_LOWER_MULT = 0.85;
+const LAVA_PERSIST_BLOCKED_MULT = 0.6;
 const LAVA_MIN_DROP = 0.01;
 const LAVA_FLOW_THRESHOLD = ROCK_CLUSTER_THRESHOLD;
 const LAVA_ROCK_THRESHOLD = 0.5;
@@ -58,10 +67,14 @@ const FOREST_GRASS_FLIP_CHANCE = 0.00005;
 const SHALLOW_WATER_RADIUS = 1;
 const SAKURA_SEED_CHANCE = 0.000005;
 const SAKURA_NEAR_CHANCE = 0.04;
-const SAKURA_DISAPPEAR_CHANCE = 0.1;
+const SAKURA_DISAPPEAR_CHANCE = 0.03;
 const SAKURA_NEIGHBOR_RADIUS = 1;
 const SAKURA_SHADE_VARIANCE = 0.12;
 const SAKURA_FOREST_THRESHOLD = 0.44;
+const FIRE_SPREAD_CHANCE = 0.35;
+const FIRE_FROM_LAVA_CHANCE = 0.65;
+const FIRE_TO_DIRT_CHANCE = 0.75;
+const FIRE_SHADE_VARIANCE = 0.18;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -697,13 +710,13 @@ const flipForestGrassAt = (map, elevationMap, x, y) => {
 const baseVegetationBiome = (elevation) =>
   elevation > SAKURA_FOREST_THRESHOLD ? BIOME_INDEX.forest : BIOME_INDEX.grass;
 
-const hasSakuraNeighbor = (map, x, y, radius = 1) => {
+const hasNeighborBiome = (map, x, y, biomeIndex, radius = 1, manhattan = false) => {
   for (let dy = -radius; dy <= radius; dy += 1) {
     for (let dx = -radius; dx <= radius; dx += 1) {
       if (dx === 0 && dy === 0) {
         continue;
       }
-      if (Math.abs(dx) + Math.abs(dy) > radius) {
+      if (manhattan && Math.abs(dx) + Math.abs(dy) > radius) {
         continue;
       }
       const nx = x + dx;
@@ -712,13 +725,16 @@ const hasSakuraNeighbor = (map, x, y, radius = 1) => {
         continue;
       }
       const idx = map.index(nx, ny);
-      if (map.biomes[idx] === BIOME_INDEX.sakura) {
+      if (map.biomes[idx] === biomeIndex) {
         return true;
       }
     }
   }
   return false;
 };
+
+const hasSakuraNeighbor = (map, x, y, radius = 1) =>
+  hasNeighborBiome(map, x, y, BIOME_INDEX.sakura, radius, true);
 
 const fogHasPresence = (fog) => {
   for (let i = 0; i < fog.length; i += 1) {
@@ -958,7 +974,9 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.shallow ||
           biomeIndex === BIOME_INDEX.rock ||
           biomeIndex === BIOME_INDEX.snow ||
-          biomeIndex === BIOME_INDEX.lava
+          biomeIndex === BIOME_INDEX.lava ||
+          biomeIndex === BIOME_INDEX.fire ||
+          biomeIndex === BIOME_INDEX.dirt
         ) {
           continue;
         }
@@ -1080,6 +1098,9 @@ const applySpecialBiomes = (map, previousMap) => {
       if (hasLowerLavaNeighbor(previousMap, elevationMap, lavaTile.x, lavaTile.y)) {
         persistChance *= LAVA_PERSIST_WITH_LOWER_MULT;
       }
+      if (!next) {
+        persistChance *= LAVA_PERSIST_BLOCKED_MULT;
+      }
       const keepRoll = hash2(
         lavaTile.x,
         lavaTile.y,
@@ -1136,6 +1157,71 @@ const applySpecialBiomes = (map, previousMap) => {
     for (let i = 0; i < size; i += 1) {
       if (nextLava[i]) {
         map.biomes[i] = BIOME_INDEX.lava;
+      }
+    }
+  }
+
+  if (hasPrevious) {
+    const fireNext = new Uint8Array(size);
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const idx = map.index(x, y);
+        if (previousMap.biomes[idx] !== BIOME_INDEX.fire) {
+          continue;
+        }
+        const roll = hash2(x, y, map.seed + map.generation * 2297);
+        if (roll < FIRE_TO_DIRT_CHANCE) {
+          map.biomes[idx] = BIOME_INDEX.dirt;
+          const baseline = baselineForGeneration(
+            elevationMap[idx],
+            x,
+            y,
+            map.seed,
+            map.generation,
+          );
+          map.heights[idx] = biomeHeightFor(BIOME_INDEX.dirt, x, y, map.seed, baseline, 0);
+        } else {
+          fireNext[idx] = 1;
+        }
+      }
+    }
+
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const idx = map.index(x, y);
+        if (map.biomes[idx] !== BIOME_INDEX.forest) {
+          continue;
+        }
+        const fromFire = hasNeighborBiome(previousMap, x, y, BIOME_INDEX.fire, 1, true);
+        const fromLava = hasNeighborBiome(map, x, y, BIOME_INDEX.lava, 1, true);
+        if (!fromFire && !fromLava) {
+          continue;
+        }
+        const chance = fromLava
+          ? FIRE_FROM_LAVA_CHANCE
+          : FIRE_SPREAD_CHANCE;
+        const roll = hash2(x, y, map.seed + map.generation * 2351);
+        if (roll < chance) {
+          fireNext[idx] = 1;
+        }
+      }
+    }
+
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const idx = map.index(x, y);
+        if (!fireNext[idx]) {
+          continue;
+        }
+        map.biomes[idx] = BIOME_INDEX.fire;
+        const baseline = baselineForGeneration(
+          elevationMap[idx],
+          x,
+          y,
+          map.seed,
+          map.generation,
+        );
+        map.heights[idx] = biomeHeightFor(BIOME_INDEX.fire, x, y, map.seed, baseline, 0);
       }
     }
   }
@@ -1218,6 +1304,13 @@ const colorForBiome = (biomeIndex, heightValue, fogValue = 0, x = 0, y = 0, seed
     const hueShift = 0.015 * offset;
     const satShift = -0.08 * Math.abs(offset);
     const lightShift = offset * SAKURA_SHADE_VARIANCE;
+    color.offsetHSL(hueShift, satShift, lightShift);
+  }
+  if (biomeIndex === BIOME_INDEX.fire) {
+    const offset = (hash2(x, y, seed + 5153) - 0.5) * 2;
+    const hueShift = 0.05 * offset;
+    const satShift = 0.12;
+    const lightShift = offset * FIRE_SHADE_VARIANCE;
     color.offsetHSL(hueShift, satShift, lightShift);
   }
   if (fogValue > 0) {
