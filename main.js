@@ -68,8 +68,8 @@ const LAVA_PEAK_POOL = 4;
 const FOREST_GRASS_FLIP_CHANCE = 0.00005;
 const SHALLOW_WATER_RADIUS = 1;
 const SAKURA_SEED_CHANCE = 0.00002;
-const SAKURA_NEAR_CHANCE = 0.02;
-const SAKURA_DISAPPEAR_CHANCE = 0.01;
+const SAKURA_NEAR_CHANCE = 0.01;
+const SAKURA_DISAPPEAR_CHANCE = 0.02;
 const SAKURA_NEIGHBOR_RADIUS = 1;
 const SAKURA_SHADE_VARIANCE = 0.12;
 const SAKURA_FOREST_THRESHOLD = 0.44;
@@ -80,6 +80,7 @@ const FIRE_SHADE_VARIANCE = 0.18;
 const SHIP_APPEAR_CHANCE = 0.22;
 const SHIP_DISAPPEAR_CHANCE = 0.22;
 const SHIP_MIN_DISTANCE = 6;
+const SHIP_SHORE_BUFFER = 2;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -113,6 +114,9 @@ const isLavaPassable = (biomeIndex) =>
 
 const isShipBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.ship || biomeIndex === BIOME_INDEX.sail;
+
+const isWaterBiome = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.water || biomeIndex === BIOME_INDEX.shallow;
 
 class MapData {
   constructor(width, height, seed) {
@@ -980,6 +984,28 @@ const collectShipComponents = (map) => {
   return components;
 };
 
+const shipHasWaterBuffer = (map, originX, originY, length, width, horizontal, buffer) => {
+  const endX = originX + (horizontal ? length - 1 : width - 1);
+  const endY = originY + (horizontal ? width - 1 : length - 1);
+  const minX = originX - buffer;
+  const minY = originY - buffer;
+  const maxX = endX + buffer;
+  const maxY = endY + buffer;
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      if (!map.inBounds(x, y)) {
+        return false;
+      }
+      const idx = map.index(x, y);
+      if (!isWaterBiome(map.biomes[idx])) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
+
 const stampShip = (map, elevationMap, originX, originY, length, width, horizontal, sailOffsets) => {
   for (let wy = 0; wy < width; wy += 1) {
     for (let wx = 0; wx < length; wx += 1) {
@@ -1386,6 +1412,9 @@ const applySpecialBiomes = (map, previousMap) => {
         const x = Math.floor(shipRng() * (maxX + 1));
         const y = Math.floor(shipRng() * (maxY + 1));
         if (hasNeighborBiome(map, x, y, BIOME_INDEX.ship, SHIP_MIN_DISTANCE)) {
+          continue;
+        }
+        if (!shipHasWaterBuffer(map, x, y, length, width, horizontal, SHIP_SHORE_BUFFER)) {
           continue;
         }
         if (stampShip(map, elevationMap, x, y, length, width, horizontal, sailOffsets)) {
