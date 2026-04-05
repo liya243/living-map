@@ -26,16 +26,17 @@ const BIOMES = [
   { name: "house", color: "#9a6a44" },
   { name: "house_big", color: "#8b5c3a" },
   { name: "house_big_tall", color: "#956241" },
+  { name: "road", color: "#d2c29a" },
 ];
 
 const BIOME_BASE_HEIGHT = [
-  0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48, 0.32, 0.36, 0.46,
+  0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48, 0.32, 0.36, 0.46, 0.2,
 ];
 const BIOME_JITTER = [
-  0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02, 0.015, 0.02, 0.02,
+  0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02, 0.015, 0.02, 0.02, 0.015,
 ];
 const BIOME_BASELINE_WEIGHT = [
-  0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2, 0.3, 0.28, 0.28,
+  0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2, 0.3, 0.28, 0.28, 0.2,
 ];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
@@ -93,6 +94,8 @@ const HOUSE_GROW_MAX_NEARBY = 3;
 const HOUSE_BIG_GROW_CHANCE = 0.25;
 const HOUSE_CLEAR_FOREST_RADIUS = 1;
 const HOUSE_CLEAR_FOREST_CHANCE = 0.45;
+const ROAD_CONNECT_CHANCE = 0.65;
+const ROAD_MAX_DISTANCE = 38;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -136,6 +139,8 @@ const isHouseBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.house_big_tall;
 
 const isSmallHouse = (biomeIndex) => biomeIndex === BIOME_INDEX.house;
+
+const isRoadBiome = (biomeIndex) => biomeIndex === BIOME_INDEX.road;
 
 class MapData {
   constructor(width, height, seed) {
@@ -1226,6 +1231,81 @@ const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
   return false;
 };
 
+const collectBigHouseCenters = (map) => {
+  const centers = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (map.biomes[idx] === BIOME_INDEX.house_big) {
+        centers.push({ x, y });
+      }
+    }
+  }
+  return centers;
+};
+
+const isRoadBlocked = (biomeIndex) =>
+  isWaterBiome(biomeIndex) ||
+  isShipBiome(biomeIndex) ||
+  isHouseBiome(biomeIndex) ||
+  biomeIndex === BIOME_INDEX.rock ||
+  biomeIndex === BIOME_INDEX.snow ||
+  biomeIndex === BIOME_INDEX.lava ||
+  biomeIndex === BIOME_INDEX.fire;
+
+const traceRoadPath = (from, to, horizontalFirst) => {
+  const points = [];
+  const stepX = from.x <= to.x ? 1 : -1;
+  const stepY = from.y <= to.y ? 1 : -1;
+  if (horizontalFirst) {
+    for (let x = from.x; x !== to.x + stepX; x += stepX) {
+      points.push({ x, y: from.y });
+    }
+    for (let y = from.y + stepY; y !== to.y + stepY; y += stepY) {
+      points.push({ x: to.x, y });
+    }
+  } else {
+    for (let y = from.y; y !== to.y + stepY; y += stepY) {
+      points.push({ x: from.x, y });
+    }
+    for (let x = from.x + stepX; x !== to.x + stepX; x += stepX) {
+      points.push({ x, y: to.y });
+    }
+  }
+  return points;
+};
+
+const placeRoad = (map, elevationMap, from, to, rng) => {
+  const horizontalFirst = rng() < 0.5;
+  const points = traceRoadPath(from, to, horizontalFirst);
+  for (const point of points) {
+    if (!map.inBounds(point.x, point.y)) {
+      return false;
+    }
+    const idx = map.index(point.x, point.y);
+    if (isRoadBlocked(map.biomes[idx])) {
+      return false;
+    }
+  }
+
+  for (const point of points) {
+    const idx = map.index(point.x, point.y);
+    if (isRoadBlocked(map.biomes[idx])) {
+      continue;
+    }
+    map.biomes[idx] = BIOME_INDEX.road;
+    const baseline = baselineForGeneration(
+      elevationMap[idx],
+      point.x,
+      point.y,
+      map.seed,
+      map.generation,
+    );
+    map.heights[idx] = biomeHeightFor(BIOME_INDEX.road, point.x, point.y, map.seed, baseline, 0);
+  }
+  return true;
+};
+
 const stampShip = (map, elevationMap, originX, originY, length, width, horizontal, sailOffsets) => {
   for (let wy = 0; wy < width; wy += 1) {
     for (let wx = 0; wx < length; wx += 1) {
@@ -1344,7 +1424,8 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.sail ||
           biomeIndex === BIOME_INDEX.house ||
           biomeIndex === BIOME_INDEX.house_big ||
-          biomeIndex === BIOME_INDEX.house_big_tall
+          biomeIndex === BIOME_INDEX.house_big_tall ||
+          biomeIndex === BIOME_INDEX.road
         ) {
           continue;
         }
@@ -1677,7 +1758,7 @@ const applySpecialBiomes = (map, previousMap) => {
         if (map.biomes[idx] !== BIOME_INDEX.forest && map.biomes[idx] !== BIOME_INDEX.sakura) {
           continue;
         }
-        if (!hasNeighborBiome(map, x, y, BIOME_INDEX.house, HOUSE_CLEAR_FOREST_RADIUS)) {
+        if (!hasNearbyHouse(map, x, y, HOUSE_CLEAR_FOREST_RADIUS)) {
           continue;
         }
         if (clearRng() >= HOUSE_CLEAR_FOREST_CHANCE) {
@@ -1692,6 +1773,45 @@ const applySpecialBiomes = (map, previousMap) => {
           map.generation,
         );
         map.heights[idx] = biomeHeightFor(BIOME_INDEX.grass, x, y, map.seed, baseline, 0);
+      }
+    }
+  }
+
+  if (hasPrevious) {
+    const roadRng = mulberry32(map.seed + map.generation * 2971);
+    const centers = collectBigHouseCenters(map);
+    if (centers.length > 1) {
+      const connected = new Set();
+      for (let i = 0; i < centers.length; i += 1) {
+        let bestIndex = -1;
+        let bestDist = Infinity;
+        for (let j = 0; j < centers.length; j += 1) {
+          if (i === j) {
+            continue;
+          }
+          const dx = Math.abs(centers[i].x - centers[j].x);
+          const dy = Math.abs(centers[i].y - centers[j].y);
+          const dist = dx + dy;
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestIndex = j;
+          }
+        }
+        if (bestIndex === -1 || bestDist > ROAD_MAX_DISTANCE) {
+          continue;
+        }
+        const a = Math.min(i, bestIndex);
+        const b = Math.max(i, bestIndex);
+        const key = `${a}-${b}`;
+        if (connected.has(key)) {
+          continue;
+        }
+        if (roadRng() >= ROAD_CONNECT_CHANCE) {
+          continue;
+        }
+        if (placeRoad(map, elevationMap, centers[i], centers[bestIndex], roadRng)) {
+          connected.add(key);
+        }
       }
     }
   }
