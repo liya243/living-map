@@ -65,9 +65,9 @@ const LAVA_ROCK_THRESHOLD = 0.5;
 const LAVA_PEAK_POOL = 4;
 const FOREST_GRASS_FLIP_CHANCE = 0.00005;
 const SHALLOW_WATER_RADIUS = 1;
-const SAKURA_SEED_CHANCE = 0.000005;
+const SAKURA_SEED_CHANCE = 0.00002;
 const SAKURA_NEAR_CHANCE = 0.04;
-const SAKURA_DISAPPEAR_CHANCE = 0.03;
+const SAKURA_DISAPPEAR_CHANCE = 0.01;
 const SAKURA_NEIGHBOR_RADIUS = 1;
 const SAKURA_SHADE_VARIANCE = 0.12;
 const SAKURA_FOREST_THRESHOLD = 0.44;
@@ -99,6 +99,9 @@ const isRockSurface = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.rock ||
   biomeIndex === BIOME_INDEX.snow ||
   biomeIndex === BIOME_INDEX.lava;
+
+const isLavaPassable = (biomeIndex) =>
+  biomeIndex !== BIOME_INDEX.water && biomeIndex !== BIOME_INDEX.shallow;
 
 class MapData {
   constructor(width, height, seed) {
@@ -832,10 +835,10 @@ const findLowerNeighbor = (map, elevationMap, rockInfluence, x, y) => {
       continue;
     }
     const cIdx = map.index(candidate.x, candidate.y);
-    if (!isRockSurface(map.biomes[cIdx])) {
+    if (!isLavaPassable(map.biomes[cIdx])) {
       continue;
     }
-    if (rockInfluence[cIdx] < LAVA_FLOW_THRESHOLD) {
+    if (isRockSurface(map.biomes[cIdx]) && rockInfluence[cIdx] < LAVA_FLOW_THRESHOLD) {
       continue;
     }
     const elevation = elevationMap[cIdx];
@@ -1119,10 +1122,10 @@ const applySpecialBiomes = (map, previousMap) => {
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
         const idx = map.index(x, y);
-        if (!isRockSurface(map.biomes[idx])) {
+        if (!isLavaPassable(map.biomes[idx])) {
           continue;
         }
-        if (rockInfluence[idx] < LAVA_ROCK_THRESHOLD) {
+        if (isRockSurface(map.biomes[idx]) && rockInfluence[idx] < LAVA_ROCK_THRESHOLD) {
           continue;
         }
         if (previousMap.biomes[idx] === BIOME_INDEX.lava) {
