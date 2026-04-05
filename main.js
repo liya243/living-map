@@ -89,8 +89,10 @@ const HOUSE_SEARCH_RADIUS = 12;
 const HOUSE_GROW_CHANCE = 0.12;
 const HOUSE_GROW_RADIUS = 2;
 const HOUSE_GROW_MAX_RADIUS = 5;
-const HOUSE_GROW_MAX_NEARBY = 6;
+const HOUSE_GROW_MAX_NEARBY = 3;
 const HOUSE_BIG_GROW_CHANCE = 0.25;
+const HOUSE_CLEAR_FOREST_RADIUS = 1;
+const HOUSE_CLEAR_FOREST_CHANCE = 0.45;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -1663,6 +1665,33 @@ const applySpecialBiomes = (map, previousMap) => {
             0,
           );
         }
+      }
+    }
+  }
+
+  if (hasPrevious) {
+    const clearRng = mulberry32(map.seed + map.generation * 2917);
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const idx = map.index(x, y);
+        if (map.biomes[idx] !== BIOME_INDEX.forest && map.biomes[idx] !== BIOME_INDEX.sakura) {
+          continue;
+        }
+        if (!hasNeighborBiome(map, x, y, BIOME_INDEX.house, HOUSE_CLEAR_FOREST_RADIUS)) {
+          continue;
+        }
+        if (clearRng() >= HOUSE_CLEAR_FOREST_CHANCE) {
+          continue;
+        }
+        map.biomes[idx] = BIOME_INDEX.grass;
+        const baseline = baselineForGeneration(
+          elevationMap[idx],
+          x,
+          y,
+          map.seed,
+          map.generation,
+        );
+        map.heights[idx] = biomeHeightFor(BIOME_INDEX.grass, x, y, map.seed, baseline, 0);
       }
     }
   }
