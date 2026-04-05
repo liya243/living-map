@@ -27,22 +27,21 @@ const BIOMES = [
   { name: "house_big", color: "#8b5c3a" },
   { name: "house_big_tall", color: "#956241" },
   { name: "road", color: "#d2c29a" },
-  { name: "garden_water", color: "#8fb9e0" },
   { name: "garden_pumpkin", color: "#d88a3c" },
   { name: "garden_wheat", color: "#e0c25a" },
 ];
 
 const BIOME_BASE_HEIGHT = [
   0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48, 0.32, 0.36, 0.46, 0.2,
-  0.18, 0.22, 0.24,
+  0.22, 0.24,
 ];
 const BIOME_JITTER = [
   0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02, 0.015, 0.02, 0.02, 0.015,
-  0.015, 0.02, 0.02,
+  0.02, 0.02,
 ];
 const BIOME_BASELINE_WEIGHT = [
   0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2, 0.3, 0.28, 0.28, 0.2,
-  0.18, 0.2, 0.2,
+  0.2, 0.2,
 ];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
@@ -108,11 +107,11 @@ const ROAD_NEARBY_RADIUS = 3;
 const ROAD_MAX_TOTAL = 260;
 const HOUSE_FROM_ROAD_CHANCE = 0.04;
 const HOUSE_FROM_ROAD_RADIUS = 1;
-const GARDEN_FROM_ROAD_CHANCE = 0.04;
-const GARDEN_MAX_PER_GEN = 3;
+const GARDEN_FROM_ROAD_CHANCE = 0.05;
+const GARDEN_MAX_PER_GEN = 2;
 const GARDEN_NEAR_ROAD_RADIUS = 1;
-const GARDEN_SHAPE_RECT_CHANCE = 0.6;
-const GARDEN_TRIES = 8;
+const GARDEN_SHAPE_RECT_CHANCE = 0.55;
+const GARDEN_TRIES = 10;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -160,7 +159,6 @@ const isSmallHouse = (biomeIndex) => biomeIndex === BIOME_INDEX.house;
 const isRoadBiome = (biomeIndex) => biomeIndex === BIOME_INDEX.road;
 
 const isGardenBiome = (biomeIndex) =>
-  biomeIndex === BIOME_INDEX.garden_water ||
   biomeIndex === BIOME_INDEX.garden_pumpkin ||
   biomeIndex === BIOME_INDEX.garden_wheat;
 
@@ -1317,24 +1315,34 @@ const countTotalRoads = (map) => {
   return count;
 };
 
-const getGardenPattern = (rng) => {
-  const roll = rng();
-  if (roll < 0.34) {
-    return BIOME_INDEX.garden_water;
-  }
-  if (roll < 0.67) {
-    return BIOME_INDEX.garden_pumpkin;
-  }
-  return BIOME_INDEX.garden_wheat;
-};
+const stampGarden = (
+  map,
+  elevationMap,
+  originX,
+  originY,
+  width,
+  height,
+  patternRng,
+  shape,
+) => {
+  const isCircle = shape === "circle";
+  const centerX = originX + (width - 1) / 2;
+  const centerY = originY + (height - 1) / 2;
+  const radius = Math.min(width, height) / 2;
 
-const stampGarden = (map, elevationMap, originX, originY, width, height, patternRng) => {
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const gx = originX + x;
       const gy = originY + y;
       if (!map.inBounds(gx, gy)) {
         return false;
+      }
+      if (isCircle) {
+        const dx = gx - centerX;
+        const dy = gy - centerY;
+        if (dx * dx + dy * dy > radius * radius) {
+          continue;
+        }
       }
       const idx = map.index(gx, gy);
       if (map.biomes[idx] !== BIOME_INDEX.grass && map.biomes[idx] !== BIOME_INDEX.sand) {
@@ -1356,16 +1364,16 @@ const stampGarden = (map, elevationMap, originX, originY, width, height, pattern
     for (let x = 0; x < width; x += 1) {
       const gx = originX + x;
       const gy = originY + y;
+      if (isCircle) {
+        const dx = gx - centerX;
+        const dy = gy - centerY;
+        if (dx * dx + dy * dy > radius * radius) {
+          continue;
+        }
+      }
       const idx = map.index(gx, gy);
       const patternRoll = patternRng();
-      let biome = BIOME_INDEX.garden_pumpkin;
-      if (patternRoll < 0.33) {
-        biome = BIOME_INDEX.garden_water;
-      } else if (patternRoll < 0.66) {
-        biome = BIOME_INDEX.garden_pumpkin;
-      } else {
-        biome = BIOME_INDEX.garden_wheat;
-      }
+      const biome = patternRoll < 0.5 ? BIOME_INDEX.garden_pumpkin : BIOME_INDEX.garden_wheat;
       map.biomes[idx] = biome;
       const baseline = baselineForGeneration(
         elevationMap[idx],
@@ -1380,7 +1388,16 @@ const stampGarden = (map, elevationMap, originX, originY, width, height, pattern
   return true;
 };
 
-const stampGardenNearRoad = (map, elevationMap, originX, originY, width, height, patternRng) => {
+const stampGardenNearRoad = (
+  map,
+  elevationMap,
+  originX,
+  originY,
+  width,
+  height,
+  patternRng,
+  shape,
+) => {
   let nearRoad = false;
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -1413,7 +1430,7 @@ const stampGardenNearRoad = (map, elevationMap, originX, originY, width, height,
   if (!nearRoad) {
     return false;
   }
-  return stampGarden(map, elevationMap, originX, originY, width, height, patternRng);
+  return stampGarden(map, elevationMap, originX, originY, width, height, patternRng, shape);
 };
 
 const traceRoadPath = (from, to, horizontalFirst) => {
@@ -1589,7 +1606,6 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.house_big ||
           biomeIndex === BIOME_INDEX.house_big_tall ||
           biomeIndex === BIOME_INDEX.road ||
-          biomeIndex === BIOME_INDEX.garden_water ||
           biomeIndex === BIOME_INDEX.garden_pumpkin ||
           biomeIndex === BIOME_INDEX.garden_wheat
         ) {
@@ -2042,16 +2058,30 @@ const applySpecialBiomes = (map, previousMap) => {
         if (gardenRng() >= GARDEN_FROM_ROAD_CHANCE) {
           continue;
         }
-        const size = gardenRng() < GARDEN_SHAPE_RECT_CHANCE ? 2 : 3;
-        const width = size;
-        const height = size;
+        const isRect = gardenRng() < GARDEN_SHAPE_RECT_CHANCE;
+        const width = isRect ? 3 : 4;
+        const height = 4;
+        const shape = isRect ? "rect" : "circle";
+        const offsetRangeX = isRect ? 2 : 3;
+        const offsetRangeY = isRect ? 2 : 3;
         let placed = false;
         for (let attempt = 0; attempt < GARDEN_TRIES; attempt += 1) {
-          const offsetX = Math.floor(gardenRng() * (size + 2)) - size;
-          const offsetY = Math.floor(gardenRng() * (size + 2)) - size;
+          const offsetX = Math.floor(gardenRng() * (offsetRangeX * 2 + 1)) - offsetRangeX;
+          const offsetY = Math.floor(gardenRng() * (offsetRangeY * 2 + 1)) - offsetRangeY;
           const originX = x + offsetX;
           const originY = y + offsetY;
-          if (stampGardenNearRoad(map, elevationMap, originX, originY, width, height, gardenRng)) {
+          if (
+            stampGardenNearRoad(
+              map,
+              elevationMap,
+              originX,
+              originY,
+              width,
+              height,
+              gardenRng,
+              shape,
+            )
+          ) {
             placed = true;
             gardensPlaced += 1;
             break;
@@ -2059,9 +2089,20 @@ const applySpecialBiomes = (map, previousMap) => {
         }
         if (!placed && gardenRng() < 0.5) {
           // second chance with a nearby offset
-          const originX = x + (gardenRng() < 0.5 ? -size : 1);
-          const originY = y + (gardenRng() < 0.5 ? -size : 1);
-          if (stampGardenNearRoad(map, elevationMap, originX, originY, width, height, gardenRng)) {
+          const originX = x + (gardenRng() < 0.5 ? -width : 1);
+          const originY = y + (gardenRng() < 0.5 ? -height : 1);
+          if (
+            stampGardenNearRoad(
+              map,
+              elevationMap,
+              originX,
+              originY,
+              width,
+              height,
+              gardenRng,
+              shape,
+            )
+          ) {
             gardensPlaced += 1;
           }
         }

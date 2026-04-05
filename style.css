@@ -25,7 +25,6 @@
   --house-big: #8b5c3a;
   --house-big-tall: #956241;
   --road: #d2c29a;
-  --garden-water: #8fb9e0;
   --garden-pumpkin: #d88a3c;
   --garden-wheat: #e0c25a;
 }
@@ -285,10 +284,6 @@ button:hover {
 
 .swatch.road {
   background: var(--road);
-}
-
-.swatch.garden-water {
-  background: var(--garden-water);
 }
 
 .swatch.garden-pumpkin {
