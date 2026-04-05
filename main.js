@@ -108,9 +108,11 @@ const ROAD_NEARBY_RADIUS = 3;
 const ROAD_MAX_TOTAL = 260;
 const HOUSE_FROM_ROAD_CHANCE = 0.04;
 const HOUSE_FROM_ROAD_RADIUS = 1;
-const GARDEN_SPAWN_CHANCE = 0.015;
-const GARDEN_ROAD_RADIUS = 1;
+const GARDEN_FROM_ROAD_CHANCE = 0.04;
+const GARDEN_MAX_PER_GEN = 3;
+const GARDEN_NEAR_ROAD_RADIUS = 1;
 const GARDEN_SHAPE_RECT_CHANCE = 0.6;
+const GARDEN_TRIES = 8;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -1378,6 +1380,42 @@ const stampGarden = (map, elevationMap, originX, originY, width, height, pattern
   return true;
 };
 
+const stampGardenNearRoad = (map, elevationMap, originX, originY, width, height, patternRng) => {
+  let nearRoad = false;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const gx = originX + x;
+      const gy = originY + y;
+      if (!map.inBounds(gx, gy)) {
+        return false;
+      }
+      const idx = map.index(gx, gy);
+      if (map.biomes[idx] !== BIOME_INDEX.grass && map.biomes[idx] !== BIOME_INDEX.sand) {
+        return false;
+      }
+      if (hasNearbyHouse(map, gx, gy, 1)) {
+        return false;
+      }
+      if (map.biomes[idx] === BIOME_INDEX.road) {
+        return false;
+      }
+      if (isGardenBiome(map.biomes[idx])) {
+        return false;
+      }
+      if (
+        !nearRoad &&
+        hasNeighborBiome(map, gx, gy, BIOME_INDEX.road, GARDEN_NEAR_ROAD_RADIUS, true)
+      ) {
+        nearRoad = true;
+      }
+    }
+  }
+  if (!nearRoad) {
+    return false;
+  }
+  return stampGarden(map, elevationMap, originX, originY, width, height, patternRng);
+};
+
 const traceRoadPath = (from, to, horizontalFirst) => {
   const points = [];
   const stepX = from.x <= to.x ? 1 : -1;
@@ -1991,31 +2029,41 @@ const applySpecialBiomes = (map, previousMap) => {
 
   if (hasPrevious) {
     const gardenRng = mulberry32(map.seed + map.generation * 3031);
-    if (gardenRng() < GARDEN_SPAWN_CHANCE) {
-      const size = gardenRng() < GARDEN_SHAPE_RECT_CHANCE ? 2 : 3;
-      const width = size;
-      const height = size;
-      const tries = 12;
-      for (let attempt = 0; attempt < tries; attempt += 1) {
-        const x = Math.floor(gardenRng() * (map.width - width));
-        const y = Math.floor(gardenRng() * (map.height - height));
-        let nearRoad = false;
-        for (let gy = y; gy < y + height; gy += 1) {
-          for (let gx = x; gx < x + width; gx += 1) {
-            if (hasNeighborBiome(map, gx, gy, BIOME_INDEX.road, GARDEN_ROAD_RADIUS, true)) {
-              nearRoad = true;
-              break;
-            }
-          }
-          if (nearRoad) {
+    let gardensPlaced = 0;
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        if (gardensPlaced >= GARDEN_MAX_PER_GEN) {
+          break;
+        }
+        const idx = map.index(x, y);
+        if (map.biomes[idx] !== BIOME_INDEX.road) {
+          continue;
+        }
+        if (gardenRng() >= GARDEN_FROM_ROAD_CHANCE) {
+          continue;
+        }
+        const size = gardenRng() < GARDEN_SHAPE_RECT_CHANCE ? 2 : 3;
+        const width = size;
+        const height = size;
+        let placed = false;
+        for (let attempt = 0; attempt < GARDEN_TRIES; attempt += 1) {
+          const offsetX = Math.floor(gardenRng() * (size + 2)) - size;
+          const offsetY = Math.floor(gardenRng() * (size + 2)) - size;
+          const originX = x + offsetX;
+          const originY = y + offsetY;
+          if (stampGardenNearRoad(map, elevationMap, originX, originY, width, height, gardenRng)) {
+            placed = true;
+            gardensPlaced += 1;
             break;
           }
         }
-        if (!nearRoad) {
-          continue;
-        }
-        if (stampGarden(map, elevationMap, x, y, width, height, gardenRng)) {
-          break;
+        if (!placed && gardenRng() < 0.5) {
+          // second chance with a nearby offset
+          const originX = x + (gardenRng() < 0.5 ? -size : 1);
+          const originY = y + (gardenRng() < 0.5 ? -size : 1);
+          if (stampGardenNearRoad(map, elevationMap, originX, originY, width, height, gardenRng)) {
+            gardensPlaced += 1;
+          }
         }
       }
     }
