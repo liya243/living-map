@@ -162,6 +162,9 @@ const isGardenBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.garden_pumpkin ||
   biomeIndex === BIOME_INDEX.garden_wheat;
 
+const isDevelopmentBiome = (biomeIndex) =>
+  isHouseBiome(biomeIndex) || isRoadBiome(biomeIndex) || isGardenBiome(biomeIndex);
+
 class MapData {
   constructor(width, height, seed) {
     this.width = width;
@@ -1096,6 +1099,26 @@ const hasNearbyHouse = (map, x, y, radius, ignore) => {
   return false;
 };
 
+const hasNearbyDevelopment = (map, x, y, radius) => {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (isDevelopmentBiome(map.biomes[idx])) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 const findClosestGrass = (
   map,
   originX,
@@ -1903,7 +1926,7 @@ const applySpecialBiomes = (map, previousMap) => {
         if (map.biomes[idx] !== BIOME_INDEX.forest && map.biomes[idx] !== BIOME_INDEX.sakura) {
           continue;
         }
-        if (!hasNearbyHouse(map, x, y, HOUSE_CLEAR_FOREST_RADIUS)) {
+        if (!hasNearbyDevelopment(map, x, y, HOUSE_CLEAR_FOREST_RADIUS)) {
           continue;
         }
         if (clearRng() >= HOUSE_CLEAR_FOREST_CHANCE) {
