@@ -77,9 +77,9 @@ const FIRE_SPREAD_CHANCE = 0.6;
 const FIRE_FROM_LAVA_CHANCE = 0.9;
 const FIRE_TO_DIRT_CHANCE = 0.65;
 const FIRE_SHADE_VARIANCE = 0.18;
-const SHIP_APPEAR_CHANCE = 0.25;
+const SHIP_APPEAR_CHANCE = 0.22;
 const SHIP_DISAPPEAR_CHANCE = 0.22;
-const SHIP_LARGE_CHANCE = 0.35;
+const SHIP_MIN_DISTANCE = 6;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -1375,10 +1375,9 @@ const applySpecialBiomes = (map, previousMap) => {
   {
     const shipRng = mulberry32(map.seed + map.generation * 2789);
     if (shipRng() < SHIP_APPEAR_CHANCE) {
-      const isLarge = shipRng() < SHIP_LARGE_CHANCE;
-      const length = isLarge ? 4 : 2;
-      const width = isLarge ? 3 : 1;
-      const sailOffsets = isLarge ? [{ x: 1, y: 1 }, { x: 2, y: 1 }] : [];
+      const length = 4;
+      const width = 3;
+      const sailOffsets = [{ x: 1, y: 1 }, { x: 2, y: 1 }];
       const horizontal = shipRng() < 0.5;
       const maxX = horizontal ? map.width - length : map.width - width;
       const maxY = horizontal ? map.height - width : map.height - length;
@@ -1386,6 +1385,9 @@ const applySpecialBiomes = (map, previousMap) => {
       for (let attempt = 0; attempt < tries; attempt += 1) {
         const x = Math.floor(shipRng() * (maxX + 1));
         const y = Math.floor(shipRng() * (maxY + 1));
+        if (hasNeighborBiome(map, x, y, BIOME_INDEX.ship, SHIP_MIN_DISTANCE)) {
+          continue;
+        }
         if (stampShip(map, elevationMap, x, y, length, width, horizontal, sailOffsets)) {
           break;
         }
