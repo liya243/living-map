@@ -87,6 +87,10 @@ const SHIP_SHORE_BUFFER = 2;
 const HOUSE_SPAWN_CHANCE = 0.45;
 const HOUSE_SEARCH_RADIUS = 12;
 const BIG_HOUSE_RADIUS = 3;
+const HOUSE_GROW_CHANCE = 0.12;
+const HOUSE_GROW_RADIUS = 2;
+const HOUSE_GROW_MAX_RADIUS = 5;
+const HOUSE_GROW_MAX_NEARBY = 6;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -1065,6 +1069,31 @@ const findClosestGrass = (map, originX, originY, length, width, horizontal, radi
   return best;
 };
 
+const findNearbyGrass = (map, originX, originY, radius, rng) => {
+  const candidates = [];
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      const x = originX + dx;
+      const y = originY + dy;
+      if (!map.inBounds(x, y)) {
+        continue;
+      }
+      const idx = map.index(x, y);
+      if (map.biomes[idx] === BIOME_INDEX.grass) {
+        candidates.push({ x, y, idx });
+      }
+    }
+  }
+  if (!candidates.length) {
+    return null;
+  }
+  const pick = Math.floor(rng() * candidates.length);
+  return candidates[pick];
+};
+
 const countNearbySmallHouses = (map, x, y, radius) => {
   let count = 0;
   for (let dy = -radius; dy <= radius; dy += 1) {
@@ -1079,6 +1108,27 @@ const countNearbySmallHouses = (map, x, y, radius) => {
       }
       const idx = map.index(nx, ny);
       if (map.biomes[idx] === BIOME_INDEX.house) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+};
+
+const countNearbyHouses = (map, x, y, radius) => {
+  let count = 0;
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (isHouseBiome(map.biomes[idx])) {
         count += 1;
       }
     }
@@ -1538,6 +1588,44 @@ const applySpecialBiomes = (map, previousMap) => {
           );
           map.heights[idx] = biomeHeightFor(tile.biome, tile.x, tile.y, map.seed, baseline, 0);
         }
+      }
+    }
+  }
+
+  if (hasPrevious) {
+    const growRng = mulberry32(map.seed + map.generation * 2831);
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const idx = map.index(x, y);
+        if (!isHouseBiome(previousMap.biomes[idx])) {
+          continue;
+        }
+        if (growRng() >= HOUSE_GROW_CHANCE) {
+          continue;
+        }
+        if (countNearbyHouses(map, x, y, HOUSE_GROW_MAX_RADIUS) >= HOUSE_GROW_MAX_NEARBY) {
+          continue;
+        }
+        const target = findNearbyGrass(map, x, y, HOUSE_GROW_RADIUS, growRng);
+        if (!target) {
+          continue;
+        }
+        map.biomes[target.idx] = BIOME_INDEX.house;
+        const baseline = baselineForGeneration(
+          elevationMap[target.idx],
+          target.x,
+          target.y,
+          map.seed,
+          map.generation,
+        );
+        map.heights[target.idx] = biomeHeightFor(
+          BIOME_INDEX.house,
+          target.x,
+          target.y,
+          map.seed,
+          baseline,
+          0,
+        );
       }
     }
   }
