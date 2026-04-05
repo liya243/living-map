@@ -5,6 +5,7 @@ const IS_MOBILE = true;
 const MAP_WIDTH = MOBILE_MAP_SIZE;
 const MAP_HEIGHT = MAP_WIDTH;
 const MAX_PIXEL_RATIO = 1;
+const BIOME_SCHEMA_VERSION = 2;
 const STORAGE_KEY = "wildlands-map-v1";
 const TIMELINE_KEY = "wildlands-timeline-v1";
 const RENDERER_KEY = "wildlands-renderer";
@@ -206,6 +207,7 @@ class MapData {
       seed: this.seed,
       generation: this.generation,
       heightMode: this.heightMode,
+      biomeVersion: BIOME_SCHEMA_VERSION,
       heights: Array.from(this.heights),
       biomes: Array.from(this.biomes),
       fog: Array.from(this.fog),
@@ -217,7 +219,27 @@ class MapData {
     map.generation = data.generation || 0;
     map.heightMode = data.heightMode || "legacy";
     map.heights.set(data.heights);
-    map.biomes.set(data.biomes);
+    if (Array.isArray(data.biomes)) {
+      const length = Math.min(map.biomes.length, data.biomes.length);
+      for (let i = 0; i < length; i += 1) {
+        map.biomes[i] = data.biomes[i];
+      }
+    }
+    const biomeVersion = Number.isFinite(data.biomeVersion) ? data.biomeVersion : 0;
+    if (biomeVersion < BIOME_SCHEMA_VERSION) {
+      for (let i = 0; i < map.biomes.length; i += 1) {
+        const value = map.biomes[i];
+        let next = value;
+        if (value === 17 || value === 18) {
+          next = BIOME_INDEX.garden_pumpkin;
+        } else if (value === 19) {
+          next = BIOME_INDEX.garden_wheat;
+        } else if (value >= BIOMES.length) {
+          next = BIOME_INDEX.grass;
+        }
+        map.biomes[i] = next;
+      }
+    }
     if (Array.isArray(data.fog) && data.fog.length === map.fog.length) {
       map.fog.set(data.fog);
     }
