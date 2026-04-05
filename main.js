@@ -21,16 +21,18 @@ const BIOMES = [
   { name: "sakura", color: "#d98ab7" },
   { name: "fire", color: "#e35b2f" },
   { name: "dirt", color: "#7a5b3b" },
+  { name: "ship", color: "#7a5a3a" },
+  { name: "sail", color: "#eef0f2" },
 ];
 
 const BIOME_BASE_HEIGHT = [
-  0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24,
+  0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48,
 ];
 const BIOME_JITTER = [
-  0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02,
+  0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02,
 ];
 const BIOME_BASELINE_WEIGHT = [
-  0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3,
+  0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2,
 ];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
@@ -71,10 +73,13 @@ const SAKURA_DISAPPEAR_CHANCE = 0.01;
 const SAKURA_NEIGHBOR_RADIUS = 1;
 const SAKURA_SHADE_VARIANCE = 0.12;
 const SAKURA_FOREST_THRESHOLD = 0.44;
-const FIRE_SPREAD_CHANCE = 0.35;
-const FIRE_FROM_LAVA_CHANCE = 0.65;
-const FIRE_TO_DIRT_CHANCE = 0.75;
+const FIRE_SPREAD_CHANCE = 0.6;
+const FIRE_FROM_LAVA_CHANCE = 0.9;
+const FIRE_TO_DIRT_CHANCE = 0.65;
 const FIRE_SHADE_VARIANCE = 0.18;
+const SHIP_APPEAR_CHANCE = 0.25;
+const SHIP_DISAPPEAR_CHANCE = 0.22;
+const SHIP_LARGE_CHANCE = 0.35;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -101,7 +106,13 @@ const isRockSurface = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.lava;
 
 const isLavaPassable = (biomeIndex) =>
-  biomeIndex !== BIOME_INDEX.water && biomeIndex !== BIOME_INDEX.shallow;
+  biomeIndex !== BIOME_INDEX.water &&
+  biomeIndex !== BIOME_INDEX.shallow &&
+  biomeIndex !== BIOME_INDEX.ship &&
+  biomeIndex !== BIOME_INDEX.sail;
+
+const isShipBiome = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.ship || biomeIndex === BIOME_INDEX.sail;
 
 class MapData {
   constructor(width, height, seed) {
@@ -921,6 +932,95 @@ const collectLavaTiles = (lavaMap) => {
   return tiles;
 };
 
+const collectShipComponents = (map) => {
+  if (!map) {
+    return [];
+  }
+  const components = [];
+  const visited = new Uint8Array(map.width * map.height);
+  const queue = [];
+
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const startIdx = map.index(x, y);
+      if (visited[startIdx] || !isShipBiome(map.biomes[startIdx])) {
+        continue;
+      }
+      const component = [];
+      visited[startIdx] = 1;
+      queue.length = 0;
+      queue.push({ x, y });
+      while (queue.length) {
+        const current = queue.pop();
+        const idx = map.index(current.x, current.y);
+        component.push({ x: current.x, y: current.y, idx, biome: map.biomes[idx] });
+        const neighbors = [
+          { x: current.x + 1, y: current.y },
+          { x: current.x - 1, y: current.y },
+          { x: current.x, y: current.y + 1 },
+          { x: current.x, y: current.y - 1 },
+        ];
+        for (const neighbor of neighbors) {
+          if (!map.inBounds(neighbor.x, neighbor.y)) {
+            continue;
+          }
+          const nIdx = map.index(neighbor.x, neighbor.y);
+          if (visited[nIdx] || !isShipBiome(map.biomes[nIdx])) {
+            continue;
+          }
+          visited[nIdx] = 1;
+          queue.push(neighbor);
+        }
+      }
+      if (component.length) {
+        components.push(component);
+      }
+    }
+  }
+  return components;
+};
+
+const stampShip = (map, elevationMap, originX, originY, length, width, horizontal, sailOffsets) => {
+  for (let wy = 0; wy < width; wy += 1) {
+    for (let wx = 0; wx < length; wx += 1) {
+      const x = originX + (horizontal ? wx : wy);
+      const y = originY + (horizontal ? wy : wx);
+      if (!map.inBounds(x, y)) {
+        return false;
+      }
+      const idx = map.index(x, y);
+      if (map.biomes[idx] !== BIOME_INDEX.water && map.biomes[idx] !== BIOME_INDEX.shallow) {
+        return false;
+      }
+    }
+  }
+
+  for (let wy = 0; wy < width; wy += 1) {
+    for (let wx = 0; wx < length; wx += 1) {
+      const x = originX + (horizontal ? wx : wy);
+      const y = originY + (horizontal ? wy : wx);
+      const idx = map.index(x, y);
+      let biome = BIOME_INDEX.ship;
+      for (const offset of sailOffsets) {
+        if (wx === offset.x && wy === offset.y) {
+          biome = BIOME_INDEX.sail;
+          break;
+        }
+      }
+      map.biomes[idx] = biome;
+      const baseline = baselineForGeneration(
+        elevationMap[idx],
+        x,
+        y,
+        map.seed,
+        map.generation,
+      );
+      map.heights[idx] = biomeHeightFor(biome, x, y, map.seed, baseline, 0);
+    }
+  }
+  return true;
+};
+
 const applySpecialBiomes = (map, previousMap) => {
   if (map.generation <= 0) {
     return;
@@ -938,13 +1038,27 @@ const applySpecialBiomes = (map, previousMap) => {
     for (let x = 0; x < map.width; x += 1) {
       const idx = map.index(x, y);
       elevationMap[idx] = baseElevationFor(x, y, map.seed);
-      if (map.biomes[idx] === BIOME_INDEX.water || map.biomes[idx] === BIOME_INDEX.shallow) {
+      const biomeIndex = map.biomes[idx];
+      if (isShipBiome(biomeIndex)) {
+        map.biomes[idx] = BIOME_INDEX.water;
+        waterMask[idx] = 1;
+        const baseline = baselineForGeneration(
+          elevationMap[idx],
+          x,
+          y,
+          map.seed,
+          map.generation,
+        );
+        map.heights[idx] = biomeHeightFor(BIOME_INDEX.water, x, y, map.seed, baseline, 0);
+        continue;
+      }
+      if (biomeIndex === BIOME_INDEX.water || biomeIndex === BIOME_INDEX.shallow) {
         waterMask[idx] = 1;
       }
-      if (map.biomes[idx] === BIOME_INDEX.snow || map.biomes[idx] === BIOME_INDEX.lava) {
+      if (biomeIndex === BIOME_INDEX.snow || biomeIndex === BIOME_INDEX.lava) {
         map.biomes[idx] = BIOME_INDEX.rock;
       }
-      if (map.biomes[idx] === BIOME_INDEX.grass || map.biomes[idx] === BIOME_INDEX.forest) {
+      if (biomeIndex === BIOME_INDEX.grass || biomeIndex === BIOME_INDEX.forest) {
         flipCandidates.push({ x, y });
       }
     }
@@ -979,7 +1093,9 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.snow ||
           biomeIndex === BIOME_INDEX.lava ||
           biomeIndex === BIOME_INDEX.fire ||
-          biomeIndex === BIOME_INDEX.dirt
+          biomeIndex === BIOME_INDEX.dirt ||
+          biomeIndex === BIOME_INDEX.ship ||
+          biomeIndex === BIOME_INDEX.sail
         ) {
           continue;
         }
@@ -1225,6 +1341,54 @@ const applySpecialBiomes = (map, previousMap) => {
           map.generation,
         );
         map.heights[idx] = biomeHeightFor(BIOME_INDEX.fire, x, y, map.seed, baseline, 0);
+      }
+    }
+  }
+
+  if (hasPrevious) {
+    const shipComponents = collectShipComponents(previousMap);
+    if (shipComponents.length) {
+      const shipRng = mulberry32(map.seed + map.generation * 2711);
+      for (const component of shipComponents) {
+        if (shipRng() < SHIP_DISAPPEAR_CHANCE) {
+          continue;
+        }
+        for (const tile of component) {
+          const idx = map.index(tile.x, tile.y);
+          if (map.biomes[idx] !== BIOME_INDEX.water && map.biomes[idx] !== BIOME_INDEX.shallow) {
+            continue;
+          }
+          map.biomes[idx] = tile.biome;
+          const baseline = baselineForGeneration(
+            elevationMap[idx],
+            tile.x,
+            tile.y,
+            map.seed,
+            map.generation,
+          );
+          map.heights[idx] = biomeHeightFor(tile.biome, tile.x, tile.y, map.seed, baseline, 0);
+        }
+      }
+    }
+  }
+
+  {
+    const shipRng = mulberry32(map.seed + map.generation * 2789);
+    if (shipRng() < SHIP_APPEAR_CHANCE) {
+      const isLarge = shipRng() < SHIP_LARGE_CHANCE;
+      const length = isLarge ? 4 : 2;
+      const width = isLarge ? 3 : 1;
+      const sailOffsets = isLarge ? [{ x: 1, y: 1 }, { x: 2, y: 1 }] : [];
+      const horizontal = shipRng() < 0.5;
+      const maxX = horizontal ? map.width - length : map.width - width;
+      const maxY = horizontal ? map.height - width : map.height - length;
+      const tries = 24;
+      for (let attempt = 0; attempt < tries; attempt += 1) {
+        const x = Math.floor(shipRng() * (maxX + 1));
+        const y = Math.floor(shipRng() * (maxY + 1));
+        if (stampShip(map, elevationMap, x, y, length, width, horizontal, sailOffsets)) {
+          break;
+        }
       }
     }
   }
