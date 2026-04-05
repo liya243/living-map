@@ -99,6 +99,9 @@ const ROAD_FROM_ROAD_CHANCE = 0.2;
 const ROAD_NEAR_HOUSE_RADIUS = 2;
 const ROAD_MAX_NEARBY = 10;
 const ROAD_NEARBY_RADIUS = 3;
+const ROAD_MAX_TOTAL = 260;
+const HOUSE_FROM_ROAD_CHANCE = 0.04;
+const HOUSE_FROM_ROAD_RADIUS = 1;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -1264,6 +1267,17 @@ const countNearbyRoads = (map, x, y, radius) => {
   return count;
 };
 
+const countTotalRoads = (map) => {
+  let count = 0;
+  const size = map.width * map.height;
+  for (let i = 0; i < size; i += 1) {
+    if (map.biomes[i] === BIOME_INDEX.road) {
+      count += 1;
+    }
+  }
+  return count;
+};
+
 const traceRoadPath = (from, to, horizontalFirst) => {
   const points = [];
   const stepX = from.x <= to.x ? 1 : -1;
@@ -1762,6 +1776,46 @@ const applySpecialBiomes = (map, previousMap) => {
   }
 
   if (hasPrevious) {
+    const roadHouseRng = mulberry32(map.seed + map.generation * 2899);
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const idx = map.index(x, y);
+        if (map.biomes[idx] !== BIOME_INDEX.grass) {
+          continue;
+        }
+        if (!hasNeighborBiome(map, x, y, BIOME_INDEX.road, HOUSE_FROM_ROAD_RADIUS, true)) {
+          continue;
+        }
+        if (hasNearbyHouse(map, x, y, 1)) {
+          continue;
+        }
+        if (countNearbyHouses(map, x, y, HOUSE_GROW_MAX_RADIUS) >= HOUSE_GROW_MAX_NEARBY) {
+          continue;
+        }
+        if (roadHouseRng() >= HOUSE_FROM_ROAD_CHANCE) {
+          continue;
+        }
+        map.biomes[idx] = BIOME_INDEX.house;
+        const baseline = baselineForGeneration(
+          elevationMap[idx],
+          x,
+          y,
+          map.seed,
+          map.generation,
+        );
+        map.heights[idx] = biomeHeightFor(
+          BIOME_INDEX.house,
+          x,
+          y,
+          map.seed,
+          baseline,
+          0,
+        );
+      }
+    }
+  }
+
+  if (hasPrevious) {
     const clearRng = mulberry32(map.seed + map.generation * 2917);
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
@@ -1790,11 +1844,15 @@ const applySpecialBiomes = (map, previousMap) => {
 
   if (hasPrevious) {
     const roadRng = mulberry32(map.seed + map.generation * 2971);
+    let totalRoads = countTotalRoads(map);
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
         const idx = map.index(x, y);
         if (map.biomes[idx] !== BIOME_INDEX.grass && map.biomes[idx] !== BIOME_INDEX.sand) {
           continue;
+        }
+        if (totalRoads >= ROAD_MAX_TOTAL) {
+          break;
         }
         if (countNearbyRoads(map, x, y, ROAD_NEARBY_RADIUS) >= ROAD_MAX_NEARBY) {
           continue;
@@ -1823,6 +1881,7 @@ const applySpecialBiomes = (map, previousMap) => {
           map.generation,
         );
         map.heights[idx] = biomeHeightFor(BIOME_INDEX.road, x, y, map.seed, baseline, 0);
+        totalRoads += 1;
       }
     }
   }
