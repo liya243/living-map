@@ -66,7 +66,7 @@ const LAVA_PEAK_POOL = 4;
 const FOREST_GRASS_FLIP_CHANCE = 0.00005;
 const SHALLOW_WATER_RADIUS = 1;
 const SAKURA_SEED_CHANCE = 0.00002;
-const SAKURA_NEAR_CHANCE = 0.04;
+const SAKURA_NEAR_CHANCE = 0.02;
 const SAKURA_DISAPPEAR_CHANCE = 0.01;
 const SAKURA_NEIGHBOR_RADIUS = 1;
 const SAKURA_SHADE_VARIANCE = 0.12;
@@ -1192,7 +1192,7 @@ const applySpecialBiomes = (map, previousMap) => {
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
         const idx = map.index(x, y);
-        if (map.biomes[idx] !== BIOME_INDEX.forest) {
+        if (map.biomes[idx] !== BIOME_INDEX.forest && map.biomes[idx] !== BIOME_INDEX.sakura) {
           continue;
         }
         const fromFire = hasNeighborBiome(previousMap, x, y, BIOME_INDEX.fire, 1, true);
