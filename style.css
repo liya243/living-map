@@ -21,7 +21,9 @@
   --dirt: #7a5b3b;
   --ship: #7a5a3a;
   --sail: #eef0f2;
-  --house: #c7a07a;
+  --house: #9a6a44;
+  --house-big: #8b5c3a;
+  --house-big-tall: #956241;
 }
 
 *,
@@ -267,6 +269,14 @@ button:hover {
 
 .swatch.house {
   background: var(--house);
+}
+
+.swatch.house-big {
+  background: var(--house-big);
+}
+
+.swatch.house-big-tall {
+  background: var(--house-big-tall);
 }
 
 .swatch.sakura {
