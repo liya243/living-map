@@ -27,16 +27,22 @@ const BIOMES = [
   { name: "house_big", color: "#8b5c3a" },
   { name: "house_big_tall", color: "#956241" },
   { name: "road", color: "#d2c29a" },
+  { name: "garden_water", color: "#8fb9e0" },
+  { name: "garden_pumpkin", color: "#d88a3c" },
+  { name: "garden_wheat", color: "#e0c25a" },
 ];
 
 const BIOME_BASE_HEIGHT = [
   0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48, 0.32, 0.36, 0.46, 0.2,
+  0.18, 0.22, 0.24,
 ];
 const BIOME_JITTER = [
   0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02, 0.015, 0.02, 0.02, 0.015,
+  0.015, 0.02, 0.02,
 ];
 const BIOME_BASELINE_WEIGHT = [
   0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2, 0.3, 0.28, 0.28, 0.2,
+  0.18, 0.2, 0.2,
 ];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
@@ -102,6 +108,9 @@ const ROAD_NEARBY_RADIUS = 3;
 const ROAD_MAX_TOTAL = 260;
 const HOUSE_FROM_ROAD_CHANCE = 0.04;
 const HOUSE_FROM_ROAD_RADIUS = 1;
+const GARDEN_SPAWN_CHANCE = 0.015;
+const GARDEN_ROAD_RADIUS = 1;
+const GARDEN_SHAPE_RECT_CHANCE = 0.6;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -147,6 +156,11 @@ const isHouseBiome = (biomeIndex) =>
 const isSmallHouse = (biomeIndex) => biomeIndex === BIOME_INDEX.house;
 
 const isRoadBiome = (biomeIndex) => biomeIndex === BIOME_INDEX.road;
+
+const isGardenBiome = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.garden_water ||
+  biomeIndex === BIOME_INDEX.garden_pumpkin ||
+  biomeIndex === BIOME_INDEX.garden_wheat;
 
 class MapData {
   constructor(width, height, seed) {
@@ -1278,6 +1292,69 @@ const countTotalRoads = (map) => {
   return count;
 };
 
+const getGardenPattern = (rng) => {
+  const roll = rng();
+  if (roll < 0.34) {
+    return BIOME_INDEX.garden_water;
+  }
+  if (roll < 0.67) {
+    return BIOME_INDEX.garden_pumpkin;
+  }
+  return BIOME_INDEX.garden_wheat;
+};
+
+const stampGarden = (map, elevationMap, originX, originY, width, height, patternRng) => {
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const gx = originX + x;
+      const gy = originY + y;
+      if (!map.inBounds(gx, gy)) {
+        return false;
+      }
+      const idx = map.index(gx, gy);
+      if (map.biomes[idx] !== BIOME_INDEX.grass && map.biomes[idx] !== BIOME_INDEX.sand) {
+        return false;
+      }
+      if (hasNearbyHouse(map, gx, gy, 1)) {
+        return false;
+      }
+      if (map.biomes[idx] === BIOME_INDEX.road) {
+        return false;
+      }
+      if (isGardenBiome(map.biomes[idx])) {
+        return false;
+      }
+    }
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const gx = originX + x;
+      const gy = originY + y;
+      const idx = map.index(gx, gy);
+      const patternRoll = patternRng();
+      let biome = BIOME_INDEX.garden_pumpkin;
+      if (patternRoll < 0.33) {
+        biome = BIOME_INDEX.garden_water;
+      } else if (patternRoll < 0.66) {
+        biome = BIOME_INDEX.garden_pumpkin;
+      } else {
+        biome = BIOME_INDEX.garden_wheat;
+      }
+      map.biomes[idx] = biome;
+      const baseline = baselineForGeneration(
+        elevationMap[idx],
+        gx,
+        gy,
+        map.seed,
+        map.generation,
+      );
+      map.heights[idx] = biomeHeightFor(biome, gx, gy, map.seed, baseline, 0);
+    }
+  }
+  return true;
+};
+
 const traceRoadPath = (from, to, horizontalFirst) => {
   const points = [];
   const stepX = from.x <= to.x ? 1 : -1;
@@ -1450,7 +1527,10 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.house ||
           biomeIndex === BIOME_INDEX.house_big ||
           biomeIndex === BIOME_INDEX.house_big_tall ||
-          biomeIndex === BIOME_INDEX.road
+          biomeIndex === BIOME_INDEX.road ||
+          biomeIndex === BIOME_INDEX.garden_water ||
+          biomeIndex === BIOME_INDEX.garden_pumpkin ||
+          biomeIndex === BIOME_INDEX.garden_wheat
         ) {
           continue;
         }
@@ -1882,6 +1962,38 @@ const applySpecialBiomes = (map, previousMap) => {
         );
         map.heights[idx] = biomeHeightFor(BIOME_INDEX.road, x, y, map.seed, baseline, 0);
         totalRoads += 1;
+      }
+    }
+  }
+
+  if (hasPrevious) {
+    const gardenRng = mulberry32(map.seed + map.generation * 3031);
+    if (gardenRng() < GARDEN_SPAWN_CHANCE) {
+      const size = gardenRng() < GARDEN_SHAPE_RECT_CHANCE ? 2 : 3;
+      const width = size;
+      const height = size;
+      const tries = 12;
+      for (let attempt = 0; attempt < tries; attempt += 1) {
+        const x = Math.floor(gardenRng() * (map.width - width));
+        const y = Math.floor(gardenRng() * (map.height - height));
+        let nearRoad = false;
+        for (let gy = y; gy < y + height; gy += 1) {
+          for (let gx = x; gx < x + width; gx += 1) {
+            if (hasNeighborBiome(map, gx, gy, BIOME_INDEX.road, GARDEN_ROAD_RADIUS, true)) {
+              nearRoad = true;
+              break;
+            }
+          }
+          if (nearRoad) {
+            break;
+          }
+        }
+        if (!nearRoad) {
+          continue;
+        }
+        if (stampGarden(map, elevationMap, x, y, width, height, gardenRng)) {
+          break;
+        }
       }
     }
   }
