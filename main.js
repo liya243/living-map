@@ -2817,10 +2817,18 @@ const regenerateButton = document.getElementById("regenerate");
 const saveButton = document.getElementById("save");
 const loadButton = document.getElementById("load");
 const clearButton = document.getElementById("clear");
+const playButton = document.getElementById("play");
+const recordButton = document.getElementById("record");
 const rendererNote = document.getElementById("renderer-note");
 let lastNoteUpdate = 0;
 let fallbackChecked = false;
 let fallbackFrames = 0;
+const PLAY_INTERVAL = 500;
+let playbackTimer = null;
+let isPlaying = false;
+let recorder = null;
+let recordedChunks = [];
+let isRecording = false;
 
 if (mapSizeLabel) {
   mapSizeLabel.textContent = `${MAP_WIDTH}x${MAP_HEIGHT}`;
@@ -2853,6 +2861,29 @@ const updateGenerationReadout = () => {
   if (genPrevButton) {
     genPrevButton.disabled = !previousMap;
   }
+};
+
+const setPlaybackState = (active) => {
+  if (active === isPlaying) {
+    return;
+  }
+  isPlaying = active;
+  if (isPlaying) {
+    playbackTimer = window.setInterval(() => evolveGeneration(1), PLAY_INTERVAL);
+  } else if (playbackTimer) {
+    window.clearInterval(playbackTimer);
+    playbackTimer = null;
+  }
+  if (playButton) {
+    playButton.textContent = isPlaying ? "Pause" : "Play";
+  }
+};
+
+const resetToGenZero = () => {
+  mapData.generation = 0;
+  previousMap = null;
+  updateGenerationReadout();
+  persistMapState();
 };
 
 const evolveGeneration = (direction) => {
@@ -2892,6 +2923,62 @@ if (genNextButton) {
   genNextButton.addEventListener("click", () => {
     evolveGeneration(1);
   });
+}
+
+if (playButton) {
+  playButton.addEventListener("click", () => {
+    setPlaybackState(!isPlaying);
+  });
+}
+
+if (recordButton) {
+  const canRecord =
+    typeof MediaRecorder !== "undefined" && renderer.domElement.captureStream;
+  if (!canRecord) {
+    recordButton.disabled = true;
+    recordButton.textContent = "Record (unsupported)";
+  } else {
+    recordButton.addEventListener("click", () => {
+      if (!isRecording) {
+        resetToGenZero();
+        recordedChunks = [];
+        const stream = renderer.domElement.captureStream(30);
+        try {
+          recorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp9" });
+        } catch (error) {
+          recorder = new MediaRecorder(stream);
+        }
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+        recorder.onstop = () => {
+          const mime = recorder.mimeType || "video/webm";
+          const blob = new Blob(recordedChunks, { type: mime });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "living-map.webm";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+        };
+        recorder.start();
+        isRecording = true;
+        recordButton.textContent = "Stop";
+        setPlaybackState(true);
+      } else {
+        isRecording = false;
+        recordButton.textContent = "Record";
+        if (recorder && recorder.state !== "inactive") {
+          recorder.stop();
+        }
+        setPlaybackState(false);
+      }
+    });
+  }
 }
 
 updateGenerationReadout();
@@ -2996,6 +3083,7 @@ applyButton.addEventListener("click", () => {
 });
 
 regenerateButton.addEventListener("click", () => {
+  setPlaybackState(false);
   const seed = Math.floor(Math.random() * 1000000);
   mapData = generateMapData(MAP_WIDTH, MAP_HEIGHT, seed);
   previousMap = null;
@@ -3011,6 +3099,7 @@ saveButton.addEventListener("click", () => {
 });
 
 loadButton.addEventListener("click", () => {
+  setPlaybackState(false);
   const loadedHistory = loadHistory();
   if (loadedHistory) {
     const candidate = MapData.fromJSON(loadedHistory.current);
@@ -3052,6 +3141,7 @@ loadButton.addEventListener("click", () => {
 clearButton.addEventListener("click", () => {
   clearSavedMap();
   previousMap = null;
+  setPlaybackState(false);
   updateGenerationReadout();
 });
 

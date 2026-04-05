@@ -26,7 +26,8 @@ Open `http://localhost:5173`.
 - Ships can spawn near a single shoreline; nearby grass may gain a small house.
 - Houses can seed nearby houses; some seeds become bigger two-tile houses.
 - Roads grow outward from houses and existing roads to form a network.
-- Gardens can appear near roads with patterned plots of water and crops.
+- Gardens can appear near roads with patterned plots of crops.
+- Use Play/Record to preview or capture evolution at 2 generations/sec.
 
 ## Console API
 
