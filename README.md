@@ -24,7 +24,7 @@ Open `http://localhost:5173`.
 - Fire can spread from lava or other fires to adjacent forests and burns into dirt.
 - Ships occasionally spawn on water and can disappear over time.
 - Ships can spawn near a single shoreline; nearby grass may gain a small house.
-- Clusters of small houses can upgrade into a bigger two-tile house.
+- Houses can seed nearby houses; some seeds become bigger two-tile houses.
 
 ## Console API
 
