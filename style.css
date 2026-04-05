@@ -21,6 +21,7 @@
   --dirt: #7a5b3b;
   --ship: #7a5a3a;
   --sail: #eef0f2;
+  --house: #c7a07a;
 }
 
 *,
@@ -262,6 +263,10 @@ button:hover {
 
 .swatch.sail {
   background: var(--sail);
+}
+
+.swatch.house {
+  background: var(--house);
 }
 
 .swatch.sakura {

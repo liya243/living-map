@@ -23,6 +23,7 @@ Open `http://localhost:5173`.
 - Snow and lava biomes can appear in later generations on big rock peaks.
 - Fire can spread from lava or other fires to adjacent forests and burns into dirt.
 - Ships occasionally spawn on water and can disappear over time.
+- Ships can spawn near a single shoreline; nearby grass may gain a small house.
 
 ## Console API
 

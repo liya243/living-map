@@ -23,16 +23,17 @@ const BIOMES = [
   { name: "dirt", color: "#7a5b3b" },
   { name: "ship", color: "#7a5a3a" },
   { name: "sail", color: "#eef0f2" },
+  { name: "house", color: "#c7a07a" },
 ];
 
 const BIOME_BASE_HEIGHT = [
-  0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48,
+  0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48, 0.32,
 ];
 const BIOME_JITTER = [
-  0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02,
+  0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02, 0.015,
 ];
 const BIOME_BASELINE_WEIGHT = [
-  0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2,
+  0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2, 0.3,
 ];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
@@ -81,6 +82,8 @@ const SHIP_APPEAR_CHANCE = 0.22;
 const SHIP_DISAPPEAR_CHANCE = 0.22;
 const SHIP_MIN_DISTANCE = 6;
 const SHIP_SHORE_BUFFER = 2;
+const HOUSE_SPAWN_CHANCE = 0.45;
+const HOUSE_SEARCH_RADIUS = 12;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -117,6 +120,8 @@ const isShipBiome = (biomeIndex) =>
 
 const isWaterBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.water || biomeIndex === BIOME_INDEX.shallow;
+
+const isHouseBiome = (biomeIndex) => biomeIndex === BIOME_INDEX.house;
 
 class MapData {
   constructor(width, height, seed) {
@@ -984,26 +989,72 @@ const collectShipComponents = (map) => {
   return components;
 };
 
-const shipHasWaterBuffer = (map, originX, originY, length, width, horizontal, buffer) => {
+const shipShoreSides = (map, originX, originY, length, width, horizontal, buffer) => {
+  if (buffer <= 0) {
+    return [];
+  }
   const endX = originX + (horizontal ? length - 1 : width - 1);
   const endY = originY + (horizontal ? width - 1 : length - 1);
-  const minX = originX - buffer;
-  const minY = originY - buffer;
-  const maxX = endX + buffer;
-  const maxY = endY + buffer;
+  const sides = [];
+
+  const stripHasLand = (startX, endX, startY, endY) => {
+    for (let y = startY; y <= endY; y += 1) {
+      for (let x = startX; x <= endX; x += 1) {
+        if (!map.inBounds(x, y)) {
+          return true;
+        }
+        const idx = map.index(x, y);
+        if (!isWaterBiome(map.biomes[idx])) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  if (stripHasLand(originX, endX, originY - buffer, originY - 1)) {
+    sides.push("north");
+  }
+  if (stripHasLand(originX, endX, endY + 1, endY + buffer)) {
+    sides.push("south");
+  }
+  if (stripHasLand(originX - buffer, originX - 1, originY, endY)) {
+    sides.push("west");
+  }
+  if (stripHasLand(endX + 1, endX + buffer, originY, endY)) {
+    sides.push("east");
+  }
+  return sides;
+};
+
+const findClosestGrass = (map, originX, originY, length, width, horizontal, radius, rng) => {
+  const endX = originX + (horizontal ? length - 1 : width - 1);
+  const endY = originY + (horizontal ? width - 1 : length - 1);
+  const minX = Math.max(0, originX - radius);
+  const minY = Math.max(0, originY - radius);
+  const maxX = Math.min(map.width - 1, endX + radius);
+  const maxY = Math.min(map.height - 1, endY + radius);
+  let best = null;
+  let bestDist = Infinity;
 
   for (let y = minY; y <= maxY; y += 1) {
     for (let x = minX; x <= maxX; x += 1) {
-      if (!map.inBounds(x, y)) {
-        return false;
-      }
       const idx = map.index(x, y);
-      if (!isWaterBiome(map.biomes[idx])) {
-        return false;
+      if (map.biomes[idx] !== BIOME_INDEX.grass) {
+        continue;
+      }
+      const dx = x < originX ? originX - x : x > endX ? x - endX : 0;
+      const dy = y < originY ? originY - y : y > endY ? y - endY : 0;
+      const dist = dx + dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = { x, y, idx };
+      } else if (dist === bestDist && rng && rng() < 0.5) {
+        best = { x, y, idx };
       }
     }
   }
-  return true;
+  return best;
 };
 
 const stampShip = (map, elevationMap, originX, originY, length, width, horizontal, sailOffsets) => {
@@ -1078,7 +1129,7 @@ const applySpecialBiomes = (map, previousMap) => {
         map.heights[idx] = biomeHeightFor(BIOME_INDEX.water, x, y, map.seed, baseline, 0);
         continue;
       }
-      if (biomeIndex === BIOME_INDEX.water || biomeIndex === BIOME_INDEX.shallow) {
+      if (isWaterBiome(biomeIndex)) {
         waterMask[idx] = 1;
       }
       if (biomeIndex === BIOME_INDEX.snow || biomeIndex === BIOME_INDEX.lava) {
@@ -1121,7 +1172,8 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.fire ||
           biomeIndex === BIOME_INDEX.dirt ||
           biomeIndex === BIOME_INDEX.ship ||
-          biomeIndex === BIOME_INDEX.sail
+          biomeIndex === BIOME_INDEX.sail ||
+          biomeIndex === BIOME_INDEX.house
         ) {
           continue;
         }
@@ -1414,10 +1466,49 @@ const applySpecialBiomes = (map, previousMap) => {
         if (hasNeighborBiome(map, x, y, BIOME_INDEX.ship, SHIP_MIN_DISTANCE)) {
           continue;
         }
-        if (!shipHasWaterBuffer(map, x, y, length, width, horizontal, SHIP_SHORE_BUFFER)) {
+        const shoreSides = shipShoreSides(
+          map,
+          x,
+          y,
+          length,
+          width,
+          horizontal,
+          SHIP_SHORE_BUFFER,
+        );
+        if (shoreSides.length > 1) {
           continue;
         }
         if (stampShip(map, elevationMap, x, y, length, width, horizontal, sailOffsets)) {
+          if (shoreSides.length === 1 && shipRng() < HOUSE_SPAWN_CHANCE) {
+            const closest = findClosestGrass(
+              map,
+              x,
+              y,
+              length,
+              width,
+              horizontal,
+              HOUSE_SEARCH_RADIUS,
+              shipRng,
+            );
+            if (closest) {
+              map.biomes[closest.idx] = BIOME_INDEX.house;
+              const baseline = baselineForGeneration(
+                elevationMap[closest.idx],
+                closest.x,
+                closest.y,
+                map.seed,
+                map.generation,
+              );
+              map.heights[closest.idx] = biomeHeightFor(
+                BIOME_INDEX.house,
+                closest.x,
+                closest.y,
+                map.seed,
+                baseline,
+                0,
+              );
+            }
+          }
           break;
         }
       }
