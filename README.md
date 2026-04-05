@@ -25,7 +25,7 @@ Open `http://localhost:5173`.
 - Ships occasionally spawn on water and can disappear over time.
 - Ships can spawn near a single shoreline; nearby grass may gain a small house.
 - Houses can seed nearby houses; some seeds become bigger two-tile houses.
-- Roads can appear to connect nearby big houses (villages).
+- Roads grow outward from houses and existing roads to form a network.
 
 ## Console API
 
