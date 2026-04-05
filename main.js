@@ -565,36 +565,43 @@ const clearSavedMap = () => {
   }
 };
 
-const saveTimeline = (timeline) => {
+const saveHistory = (current, previous) => {
   try {
-    localStorage.setItem(TIMELINE_KEY, JSON.stringify(timeline));
+    const payload = {
+      current: current ? current.serialize() : null,
+      previous: previous ? previous.serialize() : null,
+    };
+    localStorage.setItem(TIMELINE_KEY, JSON.stringify(payload));
   } catch (error) {
-    console.warn("Unable to save timeline.", error);
+    console.warn("Unable to save history.", error);
   }
 };
 
-const loadTimeline = () => {
+const loadHistory = () => {
   try {
     const data = localStorage.getItem(TIMELINE_KEY);
     if (!data) {
       return null;
     }
     const parsed = JSON.parse(data);
-    if (!parsed || !Array.isArray(parsed.maps) || parsed.maps.length === 0) {
+    if (!parsed) {
       return null;
     }
-    const index = clamp(parsed.index ?? parsed.currentIndex ?? 0, 0, parsed.maps.length - 1);
-    return { index, maps: parsed.maps };
+    if (parsed.current) {
+      return { current: parsed.current, previous: parsed.previous ?? null };
+    }
+    if (Array.isArray(parsed.maps) && parsed.maps.length) {
+      const index = clamp(parsed.index ?? parsed.currentIndex ?? 0, 0, parsed.maps.length - 1);
+      const current = parsed.maps[index];
+      const previous = index > 0 ? parsed.maps[index - 1] : null;
+      return { current, previous };
+    }
+    return null;
   } catch (error) {
-    console.warn("Unable to load timeline.", error);
+    console.warn("Unable to load history.", error);
     return null;
   }
 };
-
-const createTimelineFromMap = (map) => ({
-  index: map.generation || 0,
-  maps: [map.serialize()],
-});
 
 const applyLayeredHeights = (map) => {
   const size = map.width * map.height;
@@ -1786,48 +1793,47 @@ const evolveMapData = (sourceMap, generationIndex) => {
   return map;
 };
 
-let timeline = loadTimeline();
+let history = loadHistory();
 let mapData = null;
+let previousMap = null;
 
-if (timeline) {
-  const candidate = MapData.fromJSON(timeline.maps[timeline.index]);
+if (history) {
+  const candidate = MapData.fromJSON(history.current);
   if (candidate.width === MAP_WIDTH && candidate.height === MAP_HEIGHT) {
     mapData = candidate;
+    if (history.previous) {
+      const prevCandidate = MapData.fromJSON(history.previous);
+      if (
+        prevCandidate.width === MAP_WIDTH &&
+        prevCandidate.height === MAP_HEIGHT &&
+        prevCandidate.generation === candidate.generation - 1
+      ) {
+        previousMap = prevCandidate;
+      }
+    }
   } else {
-    timeline = null;
+    history = null;
   }
 }
 
 if (!mapData) {
   mapData = loadMap();
-  if (mapData && mapData.width === MAP_WIDTH && mapData.height === MAP_HEIGHT) {
-    timeline = createTimelineFromMap(mapData);
-  } else {
+  if (!(mapData && mapData.width === MAP_WIDTH && mapData.height === MAP_HEIGHT)) {
     const seed = Math.floor(Math.random() * 1000000);
     mapData = generateMapData(MAP_WIDTH, MAP_HEIGHT, seed);
-    timeline = createTimelineFromMap(mapData);
   }
 }
-
-mapData.generation = timeline ? timeline.index : mapData.generation;
 
 if (mapData.heightMode !== "layered") {
   applyLayeredHeights(mapData);
 }
 
-if (timeline) {
-  timeline.maps[timeline.index] = mapData.serialize();
-  saveTimeline(timeline);
-}
+saveHistory(mapData, previousMap);
 saveMap(mapData);
 
 const persistMapState = () => {
-  const snapshot = mapData.serialize();
-  if (timeline) {
-    timeline.maps[timeline.index] = snapshot;
-    saveTimeline(timeline);
-  }
-  saveMap(mapData, snapshot);
+  saveHistory(mapData, previousMap);
+  saveMap(mapData, mapData.serialize());
 };
 
 let tileMesh = null;
@@ -2328,48 +2334,34 @@ const updateGenerationReadout = () => {
   if (!genIndexLabel) {
     return;
   }
-  const currentIndex = timeline ? timeline.index : mapData.generation || 0;
-  genIndexLabel.textContent = currentIndex;
+  genIndexLabel.textContent = mapData.generation || 0;
   if (genPrevButton) {
-    genPrevButton.disabled = currentIndex <= 0;
+    genPrevButton.disabled = !previousMap;
   }
 };
 
 const evolveGeneration = (direction) => {
-  if (!timeline) {
-    timeline = createTimelineFromMap(mapData);
-  }
-  const previousMap = mapData;
+  const priorMap = mapData;
   if (direction > 0) {
-    if (timeline.index < timeline.maps.length - 1) {
-      timeline.index += 1;
-      mapData = MapData.fromJSON(timeline.maps[timeline.index]);
-    } else {
-      const nextGen = timeline.index + 1;
-      const evolved = evolveMapData(mapData, nextGen);
-      timeline.maps.push(evolved.serialize());
-      timeline.index = nextGen;
-      mapData = evolved;
-    }
+    const nextGen = mapData.generation + 1;
+    const evolved = evolveMapData(mapData, nextGen);
+    previousMap = mapData;
+    mapData = evolved;
   } else if (direction < 0) {
-    if (timeline.index === 0) {
+    if (!previousMap) {
       return;
     }
-    timeline.index -= 1;
-    mapData = MapData.fromJSON(timeline.maps[timeline.index]);
+    mapData = previousMap;
+    previousMap = null;
   } else {
     return;
   }
 
-  mapData.generation = timeline.index;
   if (mapData.heightMode !== "layered") {
     applyLayeredHeights(mapData);
   }
-  if (timeline) {
-    timeline.maps[timeline.index] = mapData.serialize();
-  }
   refreshTiles();
-  flashChangesBetween(previousMap, mapData, { biomesOnly: true });
+  flashChangesBetween(priorMap, mapData, { biomesOnly: true });
   updateReadout(lastLabel, null, null);
   updateGenerationReadout();
   persistMapState();
@@ -2491,7 +2483,7 @@ applyButton.addEventListener("click", () => {
 regenerateButton.addEventListener("click", () => {
   const seed = Math.floor(Math.random() * 1000000);
   mapData = generateMapData(MAP_WIDTH, MAP_HEIGHT, seed);
-  timeline = createTimelineFromMap(mapData);
+  previousMap = null;
   refreshTiles();
   startRevealAnimation();
   updateReadout(lastLabel, null, null);
@@ -2504,31 +2496,37 @@ saveButton.addEventListener("click", () => {
 });
 
 loadButton.addEventListener("click", () => {
-  const loadedTimeline = loadTimeline();
-  if (loadedTimeline) {
-    const candidate = MapData.fromJSON(loadedTimeline.maps[loadedTimeline.index]);
+  const loadedHistory = loadHistory();
+  if (loadedHistory) {
+    const candidate = MapData.fromJSON(loadedHistory.current);
     if (candidate.width !== MAP_WIDTH || candidate.height !== MAP_HEIGHT) {
       return;
     }
-    timeline = loadedTimeline;
     mapData = candidate;
+    previousMap = null;
+    if (loadedHistory.previous) {
+      const prevCandidate = MapData.fromJSON(loadedHistory.previous);
+      if (
+        prevCandidate.width === MAP_WIDTH &&
+        prevCandidate.height === MAP_HEIGHT &&
+        prevCandidate.generation === candidate.generation - 1
+      ) {
+        previousMap = prevCandidate;
+      }
+    }
   } else {
     const loaded = loadMap();
     if (!loaded || loaded.width !== MAP_WIDTH || loaded.height !== MAP_HEIGHT) {
       return;
     }
     mapData = loaded;
-    timeline = createTimelineFromMap(mapData);
+    previousMap = null;
   }
 
-  mapData.generation = timeline ? timeline.index : mapData.generation;
   if (mapData.heightMode !== "layered") {
     applyLayeredHeights(mapData);
   }
 
-  if (timeline) {
-    timeline.maps[timeline.index] = mapData.serialize();
-  }
   refreshTiles();
   startRevealAnimation();
   updateReadout(lastLabel, null, null);
@@ -2538,7 +2536,7 @@ loadButton.addEventListener("click", () => {
 
 clearButton.addEventListener("click", () => {
   clearSavedMap();
-  timeline = null;
+  previousMap = null;
   updateGenerationReadout();
 });
 
@@ -2610,7 +2608,7 @@ window.wildlands = {
     return mapData;
   },
   get generation() {
-    return timeline ? timeline.index : mapData.generation;
+    return mapData.generation;
   },
   regenerate: () => regenerateButton.click(),
   evolve: (x, y, mode, delta = 0.08) => applyActionAt(x, y, mode, delta),
