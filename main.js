@@ -1046,7 +1046,40 @@ const shipShoreSides = (map, originX, originY, length, width, horizontal, buffer
   return sides;
 };
 
-const findClosestGrass = (map, originX, originY, length, width, horizontal, radius, rng) => {
+const hasNearbyHouse = (map, x, y, radius, ignore) => {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (ignore && ignore.has(idx)) {
+        continue;
+      }
+      if (isHouseBiome(map.biomes[idx])) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const findClosestGrass = (
+  map,
+  originX,
+  originY,
+  length,
+  width,
+  horizontal,
+  radius,
+  rng,
+  spacingRadius = 0,
+) => {
   const endX = originX + (horizontal ? length - 1 : width - 1);
   const endY = originY + (horizontal ? width - 1 : length - 1);
   const minX = Math.max(0, originX - radius);
@@ -1060,6 +1093,9 @@ const findClosestGrass = (map, originX, originY, length, width, horizontal, radi
     for (let x = minX; x <= maxX; x += 1) {
       const idx = map.index(x, y);
       if (map.biomes[idx] !== BIOME_INDEX.grass) {
+        continue;
+      }
+      if (spacingRadius > 0 && hasNearbyHouse(map, x, y, spacingRadius)) {
         continue;
       }
       const dx = x < originX ? originX - x : x > endX ? x - endX : 0;
@@ -1076,7 +1112,7 @@ const findClosestGrass = (map, originX, originY, length, width, horizontal, radi
   return best;
 };
 
-const findNearbyGrass = (map, originX, originY, radius, rng) => {
+const findNearbyGrass = (map, originX, originY, radius, rng, spacingRadius = 0) => {
   const candidates = [];
   for (let dy = -radius; dy <= radius; dy += 1) {
     for (let dx = -radius; dx <= radius; dx += 1) {
@@ -1090,6 +1126,9 @@ const findNearbyGrass = (map, originX, originY, radius, rng) => {
       }
       const idx = map.index(x, y);
       if (map.biomes[idx] === BIOME_INDEX.grass) {
+        if (spacingRadius > 0 && hasNearbyHouse(map, x, y, spacingRadius)) {
+          continue;
+        }
         candidates.push({ x, y, idx });
       }
     }
@@ -1139,6 +1178,13 @@ const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
     const idx1 = map.index(originX, originY);
     const idx2 = map.index(x2, y2);
     if (map.biomes[idx1] !== BIOME_INDEX.grass || map.biomes[idx2] !== BIOME_INDEX.grass) {
+      continue;
+    }
+    const ignore = new Set([idx1, idx2]);
+    if (
+      hasNearbyHouse(map, originX, originY, 1, ignore) ||
+      hasNearbyHouse(map, x2, y2, 1, ignore)
+    ) {
       continue;
     }
     const baseline1 = baselineForGeneration(
@@ -1587,7 +1633,7 @@ const applySpecialBiomes = (map, previousMap) => {
         if (countNearbyHouses(map, x, y, HOUSE_GROW_MAX_RADIUS) >= HOUSE_GROW_MAX_NEARBY) {
           continue;
         }
-        const target = findNearbyGrass(map, x, y, HOUSE_GROW_RADIUS, growRng);
+        const target = findNearbyGrass(map, x, y, HOUSE_GROW_RADIUS, growRng, 1);
         if (!target) {
           continue;
         }
@@ -1597,6 +1643,9 @@ const applySpecialBiomes = (map, previousMap) => {
           placedBig = placeBigHouse(map, elevationMap, target.x, target.y, growRng);
         }
         if (!placedBig) {
+          if (hasNearbyHouse(map, target.x, target.y, 1)) {
+            continue;
+          }
           map.biomes[target.idx] = BIOME_INDEX.house;
           const baseline = baselineForGeneration(
             elevationMap[target.idx],
@@ -1657,6 +1706,7 @@ const applySpecialBiomes = (map, previousMap) => {
               horizontal,
               HOUSE_SEARCH_RADIUS,
               shipRng,
+              1,
             );
             if (closest) {
               map.biomes[closest.idx] = BIOME_INDEX.house;
