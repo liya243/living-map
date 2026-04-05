@@ -95,7 +95,9 @@ const HOUSE_BIG_GROW_CHANCE = 0.25;
 const HOUSE_CLEAR_FOREST_RADIUS = 1;
 const HOUSE_CLEAR_FOREST_CHANCE = 0.45;
 const ROAD_CONNECT_CHANCE = 0.65;
-const ROAD_MAX_DISTANCE = 38;
+const ROAD_MAX_DISTANCE = 44;
+const VILLAGE_RADIUS = 3;
+const VILLAGE_MIN_HOUSES = 3;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -1231,19 +1233,6 @@ const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
   return false;
 };
 
-const collectBigHouseCenters = (map) => {
-  const centers = [];
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      if (map.biomes[idx] === BIOME_INDEX.house_big) {
-        centers.push({ x, y });
-      }
-    }
-  }
-  return centers;
-};
-
 const isRoadBlocked = (biomeIndex) =>
   isWaterBiome(biomeIndex) ||
   isShipBiome(biomeIndex) ||
@@ -1252,6 +1241,91 @@ const isRoadBlocked = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.snow ||
   biomeIndex === BIOME_INDEX.lava ||
   biomeIndex === BIOME_INDEX.fire;
+
+const countHousesInRadius = (map, x, y, radius) => {
+  let count = 0;
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (isHouseBiome(map.biomes[idx])) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+};
+
+const collectVillageCenters = (map, radius, minHouses) => {
+  const size = map.width * map.height;
+  const villageMask = new Uint8Array(size);
+  const visited = new Uint8Array(size);
+  const centers = [];
+
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (!isHouseBiome(map.biomes[idx])) {
+        continue;
+      }
+      if (countHousesInRadius(map, x, y, radius) >= minHouses) {
+        villageMask[idx] = 1;
+      }
+    }
+  }
+
+  const queue = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const startIdx = map.index(x, y);
+      if (!villageMask[startIdx] || visited[startIdx]) {
+        continue;
+      }
+      let sumX = 0;
+      let sumY = 0;
+      let count = 0;
+      queue.length = 0;
+      queue.push({ x, y });
+      visited[startIdx] = 1;
+      while (queue.length) {
+        const current = queue.pop();
+        const idx = map.index(current.x, current.y);
+        sumX += current.x;
+        sumY += current.y;
+        count += 1;
+        const neighbors = [
+          { x: current.x + 1, y: current.y },
+          { x: current.x - 1, y: current.y },
+          { x: current.x, y: current.y + 1 },
+          { x: current.x, y: current.y - 1 },
+        ];
+        for (const neighbor of neighbors) {
+          if (!map.inBounds(neighbor.x, neighbor.y)) {
+            continue;
+          }
+          const nIdx = map.index(neighbor.x, neighbor.y);
+          if (visited[nIdx] || !villageMask[nIdx]) {
+            continue;
+          }
+          visited[nIdx] = 1;
+          queue.push(neighbor);
+        }
+      }
+      if (count > 0) {
+        centers.push({
+          x: Math.round(sumX / count),
+          y: Math.round(sumY / count),
+        });
+      }
+    }
+  }
+
+  return centers;
+};
 
 const traceRoadPath = (from, to, horizontalFirst) => {
   const points = [];
@@ -1779,7 +1853,7 @@ const applySpecialBiomes = (map, previousMap) => {
 
   if (hasPrevious) {
     const roadRng = mulberry32(map.seed + map.generation * 2971);
-    const centers = collectBigHouseCenters(map);
+    const centers = collectVillageCenters(map, VILLAGE_RADIUS, VILLAGE_MIN_HOUSES);
     if (centers.length > 1) {
       const connected = new Set();
       for (let i = 0; i < centers.length; i += 1) {
