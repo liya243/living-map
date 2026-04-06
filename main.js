@@ -1392,7 +1392,6 @@ const isShoreCandidate = (map, x, y) => {
 
 const pickFirstTowerCandidate = (map, rng) => {
   const shoreCandidates = [];
-  const edgeCandidates = [];
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const idx = map.index(x, y);
@@ -1411,18 +1410,13 @@ const pickFirstTowerCandidate = (map, rng) => {
       }
       if (isShoreCandidate(map, x, y)) {
         shoreCandidates.push({ x, y, idx });
-        continue;
-      }
-      if (isEdgeCandidate(map, x, y)) {
-        edgeCandidates.push({ x, y, idx });
       }
     }
   }
-  const candidates = shoreCandidates.length ? shoreCandidates : edgeCandidates;
-  if (!candidates.length) {
+  if (!shoreCandidates.length) {
     return null;
   }
-  return candidates[Math.floor(rng() * candidates.length)];
+  return shoreCandidates[Math.floor(rng() * shoreCandidates.length)];
 };
 
 const pickOpenDirection = (map, x, y, rng) => {
