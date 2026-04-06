@@ -123,7 +123,7 @@ const TOWER_CHAIN_MAX_PER_GEN = 1;
 const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 5;
 const TOWER_MIN_HOUSES = 10;
-const TOWER_EDGE_CLEAR_DISTANCE = 3;
+const TOWER_EDGE_CLEAR_DISTANCE = 6;
 const TOWER_SHORE_DISTANCE = 3;
 const TOWER_EDGE_SCAN_DISTANCE = 7;
 const WALL_CONNECT_CHANCE = 0.7;
@@ -1329,6 +1329,21 @@ const isVillageMaxed = (map, centerX, centerY, radius) => {
   return houseCount >= TOWER_MIN_HOUSES;
 };
 
+const hasOpenRun = (map, x, y, dir, steps) => {
+  for (let step = 1; step <= steps; step += 1) {
+    const nx = x + dir.dx * step;
+    const ny = y + dir.dy * step;
+    if (!map.inBounds(nx, ny)) {
+      return true;
+    }
+    const idx = map.index(nx, ny);
+    if (isDevelopmentBiome(map.biomes[idx])) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const isEdgeCandidate = (map, x, y) => {
   const directions = [
     { dx: 1, dy: 0 },
@@ -1337,20 +1352,7 @@ const isEdgeCandidate = (map, x, y) => {
     { dx: 0, dy: -1 },
   ];
   for (const dir of directions) {
-    let clear = true;
-    for (let step = 1; step <= TOWER_EDGE_CLEAR_DISTANCE; step += 1) {
-      const nx = x + dir.dx * step;
-      const ny = y + dir.dy * step;
-      if (!map.inBounds(nx, ny)) {
-        return true;
-      }
-      const idx = map.index(nx, ny);
-      if (isDevelopmentBiome(map.biomes[idx])) {
-        clear = false;
-        break;
-      }
-    }
-    if (clear) {
+    if (hasOpenRun(map, x, y, dir, TOWER_EDGE_CLEAR_DISTANCE)) {
       return true;
     }
   }
@@ -1392,6 +1394,7 @@ const isShoreCandidate = (map, x, y) => {
 
 const pickFirstTowerCandidate = (map, rng) => {
   const shoreCandidates = [];
+  const edgeCandidates = [];
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const idx = map.index(x, y);
@@ -1410,13 +1413,16 @@ const pickFirstTowerCandidate = (map, rng) => {
       }
       if (isShoreCandidate(map, x, y)) {
         shoreCandidates.push({ x, y, idx });
+      } else if (isEdgeCandidate(map, x, y)) {
+        edgeCandidates.push({ x, y, idx });
       }
     }
   }
-  if (!shoreCandidates.length) {
+  const candidates = shoreCandidates.length ? shoreCandidates : edgeCandidates;
+  if (!candidates.length) {
     return null;
   }
-  return shoreCandidates[Math.floor(rng() * shoreCandidates.length)];
+  return candidates[Math.floor(rng() * candidates.length)];
 };
 
 const pickOpenDirection = (map, x, y, rng) => {
