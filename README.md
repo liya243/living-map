@@ -27,7 +27,7 @@ Open `http://localhost:5173`.
 - Houses can seed nearby houses; some seeds become bigger two-tile houses.
 - Roads grow outward from houses and existing roads to form a network.
 - Gardens can appear near roads with patterned plots of crops.
-- When villages reach their growth cap, towers and walls can form along the edges.
+- Large village regions expand by 4 tiles and spawn towers along their borders.
 - Use Play/Record to preview or capture evolution at 2 generations/sec.
 
 ## Console API

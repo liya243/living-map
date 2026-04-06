@@ -115,32 +115,9 @@ const GARDEN_MAX_PER_GEN = 2;
 const GARDEN_NEAR_ROAD_RADIUS = 1;
 const GARDEN_SHAPE_RECT_CHANCE = 0.55;
 const GARDEN_TRIES = 10;
-const TOWER_SEED_CHANCE = 0.9;
-const TOWER_CHAIN_CHANCE = 0.65;
-const TOWER_CHAIN_DISTANCE_MIN = 2;
-const TOWER_CHAIN_DISTANCE_MAX = 4;
-const TOWER_CHAIN_MAX_PER_GEN = 1;
-const TOWER_NEAR_HOUSE_RADIUS = 3;
-const TOWER_MIN_DISTANCE = 6;
-const TOWER_HOUSE_RADIUS = 5;
-const TOWER_GLOBAL_MIN_HOUSES = 20;
-const TOWER_EDGE_STRIP_HALF_WIDTH = 1;
-const TOWER_SIDE_RADIUS = 20;
-const TOWER_SHORE_DISTANCE = 3;
-const TOWER_EDGE_SCAN_DISTANCE = 7;
-const DEBUG_TOWER_HEIGHT = 0.08;
-const DEBUG_TOWER_LIFT = 0.03;
-const DEBUG_TOWER_OPACITY = 0.65;
-const DEBUG_TOWER_COLORS = {
-  edge: "#d26bff",
-  shore: "#5fd8ff",
-  blocked: "#ff4d4d",
-  no_house: "#ff9b45",
-  not_maxed: "#f5d04b",
-  invalid: "#3a3a3a",
-};
-const WALL_CONNECT_CHANCE = 0.7;
-const WALL_MAX_DISTANCE = 16;
+const TOWER_EXPAND_RADIUS = 4;
+const TOWER_BORDER_SPACING = 3;
+const TOWER_MIN_VILLAGE_AREA = 80;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -203,9 +180,6 @@ const isDevelopmentBiome = (biomeIndex) =>
   isRoadBiome(biomeIndex) ||
   isGardenBiome(biomeIndex) ||
   isFortificationBiome(biomeIndex);
-
-const isTowerSettlementBiome = (biomeIndex) =>
-  isHouseBiome(biomeIndex) || isGardenBiome(biomeIndex);
 
 class MapData {
   constructor(width, height, seed) {
@@ -868,29 +842,6 @@ const hasNeighborBiome = (map, x, y, biomeIndex, radius = 1, manhattan = false) 
   return false;
 };
 
-const hasNeighborWater = (map, x, y, radius = 1) => {
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
-      if (dx === 0 && dy === 0) {
-        continue;
-      }
-      if (Math.abs(dx) + Math.abs(dy) > radius) {
-        continue;
-      }
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!map.inBounds(nx, ny)) {
-        continue;
-      }
-      const idx = map.index(nx, ny);
-      if (isWaterBiome(map.biomes[idx])) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
 const hasSakuraNeighbor = (map, x, y, radius = 1) =>
   hasNeighborBiome(map, x, y, BIOME_INDEX.sakura, radius, true);
 
@@ -1185,26 +1136,6 @@ const hasNearbyHouse = (map, x, y, radius, ignore) => {
   return false;
 };
 
-const hasNearbySettlement = (map, x, y, radius) => {
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
-      if (dx === 0 && dy === 0) {
-        continue;
-      }
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!map.inBounds(nx, ny)) {
-        continue;
-      }
-      const idx = map.index(nx, ny);
-      if (isTowerSettlementBiome(map.biomes[idx])) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
 const hasNearbyDevelopment = (map, x, y, radius) => {
   for (let dy = -radius; dy <= radius; dy += 1) {
     for (let dx = -radius; dx <= radius; dx += 1) {
@@ -1317,284 +1248,6 @@ const countNearbyHouses = (map, x, y, radius) => {
   return count;
 };
 
-const isVillageBigEnough = (globalHouseCount) => globalHouseCount >= TOWER_GLOBAL_MIN_HOUSES;
-
-const countHousesInStrip = (map, x, y, dir, length, halfWidth) => {
-  let count = 0;
-  for (let step = 1; step <= length; step += 1) {
-    for (let offset = -halfWidth; offset <= halfWidth; offset += 1) {
-      const nx = dir.dx !== 0 ? x + dir.dx * step : x + offset;
-      const ny = dir.dx !== 0 ? y + offset : y + dir.dy * step;
-      if (!map.inBounds(nx, ny)) {
-        continue;
-      }
-      const idx = map.index(nx, ny);
-      if (isHouseBiome(map.biomes[idx])) {
-        count += 1;
-      }
-    }
-  }
-  return count;
-};
-
-const hasHousesAllSides = (map, x, y) => {
-  let right = false;
-  let left = false;
-  let up = false;
-  let down = false;
-  const radiusSq = TOWER_SIDE_RADIUS * TOWER_SIDE_RADIUS;
-  for (let dy = -TOWER_SIDE_RADIUS; dy <= TOWER_SIDE_RADIUS; dy += 1) {
-    for (let dx = -TOWER_SIDE_RADIUS; dx <= TOWER_SIDE_RADIUS; dx += 1) {
-      if (dx === 0 && dy === 0) {
-        continue;
-      }
-      if (dx * dx + dy * dy > radiusSq) {
-        continue;
-      }
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!map.inBounds(nx, ny)) {
-        continue;
-      }
-      const idx = map.index(nx, ny);
-      if (!isTowerSettlementBiome(map.biomes[idx])) {
-        continue;
-      }
-      if (dx > 0) {
-        right = true;
-      } else if (dx < 0) {
-        left = true;
-      }
-      if (dy > 0) {
-        down = true;
-      } else if (dy < 0) {
-        up = true;
-      }
-      if (right && left && up && down) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-const isEdgeCandidate = (map, x, y) => {
-  if (hasHousesAllSides(map, x, y)) {
-    return false;
-  }
-  return true;
-};
-
-const hasWaterRun = (map, x, y, dir, steps) => {
-  for (let step = 1; step <= steps; step += 1) {
-    const nx = x + dir.dx * step;
-    const ny = y + dir.dy * step;
-    if (!map.inBounds(nx, ny)) {
-      return true;
-    }
-    const idx = map.index(nx, ny);
-    if (!isWaterBiome(map.biomes[idx])) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const isShoreCandidate = (map, x, y) => {
-  if (hasHousesAllSides(map, x, y)) {
-    return false;
-  }
-  if (!hasNeighborWater(map, x, y, 1)) {
-    return false;
-  }
-  const directions = [
-    { dx: 1, dy: 0 },
-    { dx: -1, dy: 0 },
-    { dx: 0, dy: 1 },
-    { dx: 0, dy: -1 },
-  ];
-  for (const dir of directions) {
-    if (hasWaterRun(map, x, y, dir, TOWER_SHORE_DISTANCE)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const pickFirstTowerCandidate = (map, rng) => {
-  const globalHouseCount = countTotalHouses(map);
-  if (!isVillageBigEnough(globalHouseCount)) {
-    return null;
-  }
-  const shoreCandidates = [];
-  const edgeCandidates = [];
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      if (
-        map.biomes[idx] !== BIOME_INDEX.grass &&
-        map.biomes[idx] !== BIOME_INDEX.sand &&
-        map.biomes[idx] !== BIOME_INDEX.dirt &&
-        map.biomes[idx] !== BIOME_INDEX.forest
-      ) {
-        continue;
-      }
-      if (!hasNeighborHouseAny(map, x, y)) {
-        continue;
-      }
-      if (isShoreCandidate(map, x, y)) {
-        shoreCandidates.push({ x, y, idx });
-      } else if (isEdgeCandidate(map, x, y)) {
-        edgeCandidates.push({ x, y, idx });
-      }
-    }
-  }
-  const candidates = edgeCandidates.length ? edgeCandidates : shoreCandidates;
-  if (!candidates.length) {
-    return null;
-  }
-  return candidates[Math.floor(rng() * candidates.length)];
-};
-
-const collectTowerCandidates = (map) => {
-  const globalHouseCount = countTotalHouses(map);
-  if (!isVillageBigEnough(globalHouseCount)) {
-    return { shore: [], edge: [] };
-  }
-  const shore = [];
-  const edge = [];
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      if (
-        map.biomes[idx] !== BIOME_INDEX.grass &&
-        map.biomes[idx] !== BIOME_INDEX.sand &&
-        map.biomes[idx] !== BIOME_INDEX.dirt &&
-        map.biomes[idx] !== BIOME_INDEX.forest
-      ) {
-        continue;
-      }
-      if (!hasNeighborHouseAny(map, x, y)) {
-        continue;
-      }
-      if (isShoreCandidate(map, x, y)) {
-        shore.push({ x, y, idx, kind: "shore" });
-      } else if (isEdgeCandidate(map, x, y)) {
-        edge.push({ x, y, idx, kind: "edge" });
-      }
-    }
-  }
-  return { shore, edge };
-};
-
-const collectTowerDebugReasons = (map) => {
-  const globalHouseCount = countTotalHouses(map);
-  const villageReady = isVillageBigEnough(globalHouseCount);
-  const results = [];
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      const biomeIndex = map.biomes[idx];
-      if (
-        biomeIndex !== BIOME_INDEX.grass &&
-        biomeIndex !== BIOME_INDEX.sand &&
-        biomeIndex !== BIOME_INDEX.dirt &&
-        biomeIndex !== BIOME_INDEX.forest
-      ) {
-        continue;
-      }
-      let kind = null;
-      if (!hasNeighborHouseAny(map, x, y)) {
-        kind = "no_house";
-      } else if (!villageReady) {
-        kind = "not_maxed";
-      } else if (hasHousesAllSides(map, x, y)) {
-        kind = "blocked";
-      } else if (isShoreCandidate(map, x, y)) {
-        kind = "shore";
-      } else if (isEdgeCandidate(map, x, y)) {
-        kind = "edge";
-      }
-      if (kind) {
-        results.push({ x, y, idx, kind });
-      }
-    }
-  }
-  return results;
-};
-
-const pickOpenDirection = (map, x, y, rng) => {
-  const directions = [
-    { dx: 1, dy: 0 },
-    { dx: -1, dy: 0 },
-    { dx: 0, dy: 1 },
-    { dx: 0, dy: -1 },
-  ];
-  let bestScore = Infinity;
-  let candidates = [];
-  for (const dir of directions) {
-    let score = countHousesInStrip(
-      map,
-      x,
-      y,
-      dir,
-      TOWER_EDGE_SCAN_DISTANCE,
-      TOWER_EDGE_STRIP_HALF_WIDTH,
-    );
-    if (hasWaterRun(map, x, y, dir, 2)) {
-      score -= 0.5;
-    }
-    if (score < bestScore) {
-      bestScore = score;
-      candidates = [dir];
-    } else if (score === bestScore) {
-      candidates.push(dir);
-    }
-  }
-  if (!candidates.length) {
-    return null;
-  }
-  return candidates[Math.floor(rng() * candidates.length)];
-};
-
-const findTowerChainSpot = (map, towers, from, rng) => {
-  const globalHouseCount = countTotalHouses(map);
-  if (!isVillageBigEnough(globalHouseCount)) {
-    return null;
-  }
-  const dir = pickOpenDirection(map, from.x, from.y, rng);
-  if (!dir) {
-    return null;
-  }
-  for (let step = TOWER_CHAIN_DISTANCE_MIN; step <= TOWER_CHAIN_DISTANCE_MAX; step += 1) {
-    const x = from.x + dir.dx * step;
-    const y = from.y + dir.dy * step;
-    if (!map.inBounds(x, y)) {
-      break;
-    }
-    const idx = map.index(x, y);
-    if (
-      map.biomes[idx] !== BIOME_INDEX.grass &&
-      map.biomes[idx] !== BIOME_INDEX.sand &&
-      map.biomes[idx] !== BIOME_INDEX.dirt &&
-      map.biomes[idx] !== BIOME_INDEX.forest
-    ) {
-      continue;
-    }
-    if (!hasNeighborHouseAny(map, x, y)) {
-      continue;
-    }
-    if (!isEdgeCandidate(map, x, y)) {
-      continue;
-    }
-    if (hasNearbyTower(towers, x, y, TOWER_MIN_DISTANCE)) {
-      continue;
-    }
-    return { x, y, idx };
-  }
-  return null;
-};
-
 const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
   const directions = [
     { dx: 1, dy: 0 },
@@ -1700,42 +1353,135 @@ const countTotalRoads = (map) => {
   return count;
 };
 
-const countTotalHouses = (map) => {
-  let count = 0;
+const isVillageTile = (biomeIndex) =>
+  isRoadBiome(biomeIndex) || isHouseBiome(biomeIndex) || isGardenBiome(biomeIndex);
+
+const buildVillageMask = (map) => {
   const size = map.width * map.height;
+  const mask = new Uint8Array(size);
   for (let i = 0; i < size; i += 1) {
-    if (isTowerSettlementBiome(map.biomes[i])) {
-      count += 1;
+    if (isVillageTile(map.biomes[i])) {
+      mask[i] = 1;
     }
   }
-  return count;
+  return mask;
 };
 
-const collectTowers = (map) => {
-  const towers = [];
+const expandVillageMask = (map, baseMask, radius) => {
+  const size = map.width * map.height;
+  const expanded = new Uint8Array(size);
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const idx = map.index(x, y);
-      if (map.biomes[idx] === BIOME_INDEX.tower) {
-        towers.push({ x, y, idx });
+      if (!baseMask[idx]) {
+        continue;
+      }
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (!map.inBounds(nx, ny)) {
+            continue;
+          }
+          expanded[map.index(nx, ny)] = 1;
+        }
       }
     }
   }
-  return towers;
+  return expanded;
 };
 
-const hasNearbyTower = (towers, x, y, minDistance) => {
+const collectVillageComponents = (map, mask) => {
+  const size = map.width * map.height;
+  const visited = new Uint8Array(size);
+  const components = [];
+  for (let idx = 0; idx < size; idx += 1) {
+    if (!mask[idx] || visited[idx]) {
+      continue;
+    }
+    const stack = [idx];
+    const component = [];
+    visited[idx] = 1;
+    while (stack.length) {
+      const current = stack.pop();
+      component.push(current);
+      const x = current % map.width;
+      const y = Math.floor(current / map.width);
+      const neighbors = [
+        { x: x + 1, y },
+        { x: x - 1, y },
+        { x, y: y + 1 },
+        { x, y: y - 1 },
+      ];
+      for (const neighbor of neighbors) {
+        if (!map.inBounds(neighbor.x, neighbor.y)) {
+          continue;
+        }
+        const nIdx = map.index(neighbor.x, neighbor.y);
+        if (!mask[nIdx] || visited[nIdx]) {
+          continue;
+        }
+        visited[nIdx] = 1;
+        stack.push(nIdx);
+      }
+    }
+    components.push(component);
+  }
+  return components;
+};
+
+const collectComponentBorder = (map, mask, component) => {
+  const border = [];
+  for (const idx of component) {
+    const x = idx % map.width;
+    const y = Math.floor(idx / map.width);
+    const neighbors = [
+      { x: x + 1, y },
+      { x: x - 1, y },
+      { x, y: y + 1 },
+      { x, y: y - 1 },
+    ];
+    let isBorder = false;
+    for (const neighbor of neighbors) {
+      if (!map.inBounds(neighbor.x, neighbor.y)) {
+        isBorder = true;
+        break;
+      }
+      const nIdx = map.index(neighbor.x, neighbor.y);
+      if (!mask[nIdx]) {
+        isBorder = true;
+        break;
+      }
+    }
+    if (isBorder) {
+      border.push({ x, y, idx });
+    }
+  }
+  return border;
+};
+
+const shuffleArray = (array, rng) => {
+  for (let i = array.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+};
+
+const canPlaceTowerOn = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.grass ||
+  biomeIndex === BIOME_INDEX.sand ||
+  biomeIndex === BIOME_INDEX.dirt ||
+  biomeIndex === BIOME_INDEX.forest;
+
+const isTowerTooClose = (towers, x, y, minDistance) => {
   for (const tower of towers) {
     const dist = Math.abs(tower.x - x) + Math.abs(tower.y - y);
-    if (dist <= minDistance) {
+    if (dist < minDistance) {
       return true;
     }
   }
   return false;
 };
-
-const hasNeighborHouseAny = (map, x, y) =>
-  hasNearbySettlement(map, x, y, TOWER_NEAR_HOUSE_RADIUS);
 
 const placeTower = (map, elevationMap, x, y) => {
   const idx = map.index(x, y);
@@ -1750,56 +1496,41 @@ const placeTower = (map, elevationMap, x, y) => {
   map.heights[idx] = biomeHeightFor(BIOME_INDEX.tower, x, y, map.seed, baseline, 0);
 };
 
-const isWallBlocked = (biomeIndex) =>
-  isWaterBiome(biomeIndex) ||
-  isShipBiome(biomeIndex) ||
-  isHouseBiome(biomeIndex) ||
-  isFortificationBiome(biomeIndex) ||
-  isGardenBiome(biomeIndex) ||
-  biomeIndex === BIOME_INDEX.road ||
-  biomeIndex === BIOME_INDEX.rock ||
-  biomeIndex === BIOME_INDEX.snow ||
-  biomeIndex === BIOME_INDEX.lava ||
-  biomeIndex === BIOME_INDEX.fire;
-
-const placeWallLine = (map, elevationMap, from, to, rng) => {
-  const horizontalFirst = rng() < 0.5;
-  const points = traceRoadPath(from, to, horizontalFirst);
-  for (const point of points) {
-    if (!map.inBounds(point.x, point.y)) {
-      return false;
-    }
-    const idx = map.index(point.x, point.y);
-    const isEndpoint =
-      (point.x === from.x && point.y === from.y) || (point.x === to.x && point.y === to.y);
-    if (isEndpoint) {
-      if (!isTowerBiome(map.biomes[idx])) {
-        return false;
+const placeBorderTowers = (map, elevationMap) => {
+  const baseMask = buildVillageMask(map);
+  const expandedMask = expandVillageMask(map, baseMask, TOWER_EXPAND_RADIUS);
+  const components = collectVillageComponents(map, expandedMask);
+  if (!components.length) {
+    return;
+  }
+  const placedTowers = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (map.biomes[idx] === BIOME_INDEX.tower) {
+        placedTowers.push({ x, y, idx });
       }
-      continue;
-    }
-    if (isWallBlocked(map.biomes[idx])) {
-      return false;
     }
   }
-  for (const point of points) {
-    const idx = map.index(point.x, point.y);
-    const isEndpoint =
-      (point.x === from.x && point.y === from.y) || (point.x === to.x && point.y === to.y);
-    if (isEndpoint || isWallBlocked(map.biomes[idx])) {
+  const rng = mulberry32(map.seed + map.generation * 4229);
+  for (const component of components) {
+    if (component.length < TOWER_MIN_VILLAGE_AREA) {
       continue;
     }
-    map.biomes[idx] = BIOME_INDEX.wall;
-    const baseline = baselineForGeneration(
-      elevationMap[idx],
-      point.x,
-      point.y,
-      map.seed,
-      map.generation,
-    );
-    map.heights[idx] = biomeHeightFor(BIOME_INDEX.wall, point.x, point.y, map.seed, baseline, 0);
+    const border = collectComponentBorder(map, expandedMask, component);
+    shuffleArray(border, rng);
+    for (const candidate of border) {
+      const idx = candidate.idx;
+      if (!canPlaceTowerOn(map.biomes[idx])) {
+        continue;
+      }
+      if (isTowerTooClose(placedTowers, candidate.x, candidate.y, TOWER_BORDER_SPACING)) {
+        continue;
+      }
+      placeTower(map, elevationMap, candidate.x, candidate.y);
+      placedTowers.push({ x: candidate.x, y: candidate.y, idx });
+    }
   }
-  return true;
 };
 
 const stampGarden = (
@@ -2600,62 +2331,7 @@ const applySpecialBiomes = (map, previousMap) => {
   }
 
   if (hasPrevious) {
-    const towerRng = mulberry32(map.seed + map.generation * 3089);
-    const towers = collectTowers(map);
-    if (!towers.length) {
-      const firstSpot = pickFirstTowerCandidate(map, towerRng);
-      if (firstSpot && towerRng() < TOWER_SEED_CHANCE) {
-        placeTower(map, elevationMap, firstSpot.x, firstSpot.y);
-        towers.push(firstSpot);
-      }
-    }
-
-    if (towers.length) {
-      let added = 0;
-      const newTowers = [];
-      for (const tower of towers) {
-        if (added >= TOWER_CHAIN_MAX_PER_GEN) {
-          break;
-        }
-        if (towerRng() >= TOWER_CHAIN_CHANCE) {
-          continue;
-        }
-        const spot = findTowerChainSpot(map, towers, tower, towerRng);
-        if (!spot) {
-          continue;
-        }
-        placeTower(map, elevationMap, spot.x, spot.y);
-        newTowers.push({ x: spot.x, y: spot.y, idx: spot.idx });
-        added += 1;
-      }
-      if (newTowers.length) {
-        towers.push(...newTowers);
-      }
-    }
-
-    if (towers.length > 1) {
-      for (let i = 0; i < towers.length; i += 1) {
-        let closest = null;
-        let closestDist = Infinity;
-        for (let j = 0; j < towers.length; j += 1) {
-          if (i === j) {
-            continue;
-          }
-          const dist = Math.abs(towers[i].x - towers[j].x) + Math.abs(towers[i].y - towers[j].y);
-          if (dist < closestDist) {
-            closestDist = dist;
-            closest = towers[j];
-          }
-        }
-        if (!closest || closestDist > WALL_MAX_DISTANCE) {
-          continue;
-        }
-        if (towerRng() >= WALL_CONNECT_CHANCE) {
-          continue;
-        }
-        placeWallLine(map, elevationMap, towers[i], closest, towerRng);
-      }
-    }
+    placeBorderTowers(map, elevationMap);
   }
 
   {
@@ -2882,8 +2558,6 @@ let updateTileVisual = null;
 let refreshTiles = null;
 let revealMaterial = null;
 let syncFlashMask = null;
-let debugTowerMesh = null;
-let debugTowerMaterial = null;
 const flashMaskTiles = new Float32Array(tileCount);
 const flashState = { active: false, start: 0, duration: FLASH_DURATION };
 const revealState = { active: false, start: 0, duration: REVEAL_DURATION };
@@ -3257,78 +2931,6 @@ const buildMergedTiles = (material) => {
   return { mesh, updateTile, refresh };
 };
 
-const disposeDebugOverlay = () => {
-  if (!debugTowerMesh) {
-    return;
-  }
-  scene.remove(debugTowerMesh);
-  if (debugTowerMesh.geometry) {
-    debugTowerMesh.geometry.dispose();
-  }
-  if (debugTowerMaterial) {
-    debugTowerMaterial.dispose();
-  }
-  debugTowerMesh = null;
-  debugTowerMaterial = null;
-};
-
-const buildDebugOverlay = (candidates) => {
-  disposeDebugOverlay();
-  if (!candidates.length) {
-    return;
-  }
-  const baseGeometry = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
-  const basePositions = baseGeometry.getAttribute("position").array;
-  const tileStride = basePositions.length;
-  baseGeometry.dispose();
-
-  const positions = new Float32Array(candidates.length * tileStride);
-  const colors = new Float32Array(candidates.length * tileStride);
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
-  for (let t = 0; t < candidates.length; t += 1) {
-    const candidate = candidates[t];
-    const idx = mapData.index(candidate.x, candidate.y);
-    const heightValue = mapData.heights[idx];
-    const biomeIndex = mapData.biomes[idx];
-    const worldHeight = heightToUnits(heightValue, biomeIndex);
-    const xOffset = candidate.x - MAP_WIDTH / 2 + 0.5;
-    const zOffset = candidate.y - MAP_HEIGHT / 2 + 0.5;
-    const bottom = worldHeight + DEBUG_TOWER_LIFT;
-    const colorValue = DEBUG_TOWER_COLORS[candidate.kind] || DEBUG_TOWER_COLORS.edge;
-    const color = new THREE.Color(colorValue);
-    const offset = t * tileStride;
-
-    for (let i = 0; i < basePositions.length; i += 3) {
-      const outIndex = offset + i;
-      positions[outIndex] = basePositions[i] + xOffset;
-      positions[outIndex + 1] =
-        bottom + (basePositions[i + 1] + 0.5) * DEBUG_TOWER_HEIGHT;
-      positions[outIndex + 2] = basePositions[i + 2] + zOffset;
-      colors[outIndex] = color.r;
-      colors[outIndex + 1] = color.g;
-      colors[outIndex + 2] = color.b;
-    }
-  }
-
-  debugTowerMaterial = new THREE.MeshBasicMaterial({
-    vertexColors: true,
-    transparent: true,
-    opacity: DEBUG_TOWER_OPACITY,
-    depthWrite: false,
-  });
-  debugTowerMaterial.polygonOffset = true;
-  debugTowerMaterial.polygonOffsetFactor = -1;
-  debugTowerMaterial.polygonOffsetUnits = -1;
-
-  debugTowerMesh = new THREE.Mesh(geometry, debugTowerMaterial);
-  debugTowerMesh.frustumCulled = false;
-  debugTowerMesh.renderOrder = 2;
-  scene.add(debugTowerMesh);
-};
-
 const disposeTileMesh = (mesh) => {
   if (!mesh) {
     return;
@@ -3346,25 +2948,6 @@ const disposeTileMesh = (mesh) => {
     } else {
       mesh.material.dispose();
     }
-  }
-};
-
-let debugTowerMode = "off";
-
-const refreshDebugOverlay = () => {
-  if (debugTowerMode === "off") {
-    disposeDebugOverlay();
-    return;
-  }
-  if (debugTowerMode === "candidates") {
-    const { shore, edge } = collectTowerCandidates(mapData);
-    const candidates = edge.length ? [...edge, ...shore] : shore;
-    buildDebugOverlay(candidates);
-    return;
-  }
-  if (debugTowerMode === "reasons") {
-    const reasons = collectTowerDebugReasons(mapData);
-    buildDebugOverlay(reasons);
   }
 };
 
@@ -3408,14 +2991,8 @@ const setRendererMode = (mode, persist = true, warning = "") => {
   const tiles =
     rendererMode === "instanced" ? buildInstancedTiles(material) : buildMergedTiles(material);
   tileMesh = tiles.mesh;
-  updateTileVisual = (x, y, markDirty = true) => {
-    tiles.updateTile(x, y, markDirty);
-    refreshDebugOverlay();
-  };
-  refreshTiles = () => {
-    tiles.refresh();
-    refreshDebugOverlay();
-  };
+  updateTileVisual = tiles.updateTile;
+  refreshTiles = tiles.refresh;
   refreshTiles();
   if (syncFlashMask) {
     syncFlashMask();
@@ -3445,8 +3022,6 @@ const clearButton = document.getElementById("clear");
 const playButton = document.getElementById("play");
 const recordButton = document.getElementById("record");
 const rendererNote = document.getElementById("renderer-note");
-const debugTowersToggle = document.getElementById("debug-towers");
-const debugTowersReasonsToggle = document.getElementById("debug-towers-reasons");
 let lastNoteUpdate = 0;
 let fallbackChecked = false;
 let fallbackFrames = 0;
@@ -3477,29 +3052,6 @@ if (rendererSelect) {
     fallbackChecked = false;
     fallbackFrames = 0;
   });
-}
-
-const updateDebugModeFromUI = () => {
-  const reasonsOn = debugTowersReasonsToggle ? debugTowersReasonsToggle.checked : false;
-  const candidatesOn = debugTowersToggle ? debugTowersToggle.checked : false;
-  if (reasonsOn && debugTowersToggle) {
-    debugTowersToggle.checked = false;
-  }
-  if (candidatesOn && debugTowersReasonsToggle) {
-    debugTowersReasonsToggle.checked = false;
-  }
-  debugTowerMode = reasonsOn ? "reasons" : candidatesOn ? "candidates" : "off";
-  refreshDebugOverlay();
-};
-
-if (debugTowersToggle) {
-  debugTowersToggle.checked = debugTowerMode === "candidates";
-  debugTowersToggle.addEventListener("change", updateDebugModeFromUI);
-}
-
-if (debugTowersReasonsToggle) {
-  debugTowersReasonsToggle.checked = debugTowerMode === "reasons";
-  debugTowersReasonsToggle.addEventListener("change", updateDebugModeFromUI);
 }
 
 
