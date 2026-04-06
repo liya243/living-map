@@ -1514,7 +1514,7 @@ const placeTower = (map, elevationMap, x, y) => {
 };
 
 const placeBorderTowers = (map, elevationMap) => {
-  if (map.villageStall < VILLAGE_STALL_THRESHOLD) {
+  if (map.villageStall !== VILLAGE_STALL_THRESHOLD) {
     return;
   }
   const baseMask = buildVillageMask(map);
