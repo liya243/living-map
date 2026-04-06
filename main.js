@@ -126,6 +126,8 @@ const TOWER_MIN_HOUSES = 10;
 const TOWER_EDGE_STRIP_HALF_WIDTH = 1;
 const TOWER_SHORE_DISTANCE = 3;
 const TOWER_EDGE_SCAN_DISTANCE = 7;
+const TOWER_MAX_GRASS_RATIO = 0.2;
+const TOWER_MAX_GRASS_MIN = 3;
 const DEBUG_TOWER_HEIGHT = 0.08;
 const DEBUG_TOWER_LIFT = 0.03;
 const DEBUG_TOWER_OPACITY = 0.65;
@@ -1312,6 +1314,7 @@ const hasAvailableHouseSpot = (map, originX, originY, radius, spacingRadius = 0)
 
 const isVillageMaxed = (map, centerX, centerY, radius) => {
   let houseCount = 0;
+  let grassCount = 0;
   for (let dy = -radius; dy <= radius; dy += 1) {
     for (let dx = -radius; dx <= radius; dx += 1) {
       const x = centerX + dx;
@@ -1320,18 +1323,19 @@ const isVillageMaxed = (map, centerX, centerY, radius) => {
         continue;
       }
       const idx = map.index(x, y);
-      if (!isHouseBiome(map.biomes[idx])) {
-        continue;
-      }
-      houseCount += 1;
-      if (countNearbyHouses(map, x, y, HOUSE_GROW_MAX_RADIUS) < HOUSE_GROW_MAX_NEARBY) {
-        if (hasAvailableHouseSpot(map, x, y, HOUSE_GROW_RADIUS, 1)) {
-          return false;
-        }
+      const biomeIndex = map.biomes[idx];
+      if (isHouseBiome(biomeIndex)) {
+        houseCount += 1;
+      } else if (biomeIndex === BIOME_INDEX.grass) {
+        grassCount += 1;
       }
     }
   }
-  return houseCount >= TOWER_MIN_HOUSES;
+  if (houseCount < TOWER_MIN_HOUSES) {
+    return false;
+  }
+  const maxGrass = Math.max(TOWER_MAX_GRASS_MIN, Math.floor(houseCount * TOWER_MAX_GRASS_RATIO));
+  return grassCount <= maxGrass;
 };
 
 const countHousesInStrip = (map, x, y, dir, length, halfWidth) => {
