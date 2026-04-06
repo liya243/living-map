@@ -124,6 +124,7 @@ const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 5;
 const TOWER_MIN_HOUSES = 10;
 const TOWER_EDGE_CLEAR_DISTANCE = 3;
+const TOWER_SHORE_DISTANCE = 3;
 const TOWER_EDGE_SCAN_DISTANCE = 7;
 const WALL_CONNECT_CHANCE = 0.7;
 const WALL_MAX_DISTANCE = 16;
@@ -851,6 +852,29 @@ const hasNeighborBiome = (map, x, y, biomeIndex, radius = 1, manhattan = false) 
   return false;
 };
 
+const hasNeighborWater = (map, x, y, radius = 1) => {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      if (Math.abs(dx) + Math.abs(dy) > radius) {
+        continue;
+      }
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (isWaterBiome(map.biomes[idx])) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 const hasSakuraNeighbor = (map, x, y, radius = 1) =>
   hasNeighborBiome(map, x, y, BIOME_INDEX.sakura, radius, true);
 
@@ -1331,6 +1355,74 @@ const isEdgeCandidate = (map, x, y) => {
     }
   }
   return false;
+};
+
+const hasWaterRun = (map, x, y, dir, steps) => {
+  for (let step = 1; step <= steps; step += 1) {
+    const nx = x + dir.dx * step;
+    const ny = y + dir.dy * step;
+    if (!map.inBounds(nx, ny)) {
+      return true;
+    }
+    const idx = map.index(nx, ny);
+    if (!isWaterBiome(map.biomes[idx])) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const isShoreCandidate = (map, x, y) => {
+  if (!hasNeighborWater(map, x, y, 1)) {
+    return false;
+  }
+  const directions = [
+    { dx: 1, dy: 0 },
+    { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: 0, dy: -1 },
+  ];
+  for (const dir of directions) {
+    if (hasWaterRun(map, x, y, dir, TOWER_SHORE_DISTANCE)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const pickFirstTowerCandidate = (map, rng) => {
+  const shoreCandidates = [];
+  const edgeCandidates = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (
+        map.biomes[idx] !== BIOME_INDEX.grass &&
+        map.biomes[idx] !== BIOME_INDEX.sand &&
+        map.biomes[idx] !== BIOME_INDEX.dirt
+      ) {
+        continue;
+      }
+      if (!hasNeighborHouseAny(map, x, y)) {
+        continue;
+      }
+      if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
+        continue;
+      }
+      if (isShoreCandidate(map, x, y)) {
+        shoreCandidates.push({ x, y, idx });
+        continue;
+      }
+      if (isEdgeCandidate(map, x, y)) {
+        edgeCandidates.push({ x, y, idx });
+      }
+    }
+  }
+  const candidates = shoreCandidates.length ? shoreCandidates : edgeCandidates;
+  if (!candidates.length) {
+    return null;
+  }
+  return candidates[Math.floor(rng() * candidates.length)];
 };
 
 const pickOpenDirection = (map, x, y, rng) => {
@@ -2418,35 +2510,10 @@ const applySpecialBiomes = (map, previousMap) => {
     const towerRng = mulberry32(map.seed + map.generation * 3089);
     const towers = collectTowers(map);
     if (!towers.length) {
-      for (let y = 0; y < map.height; y += 1) {
-        for (let x = 0; x < map.width; x += 1) {
-          const idx = map.index(x, y);
-          if (
-            map.biomes[idx] !== BIOME_INDEX.grass &&
-            map.biomes[idx] !== BIOME_INDEX.sand &&
-            map.biomes[idx] !== BIOME_INDEX.dirt
-          ) {
-            continue;
-          }
-          if (!hasNeighborHouseAny(map, x, y)) {
-            continue;
-          }
-          if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
-            continue;
-          }
-          if (!isEdgeCandidate(map, x, y)) {
-            continue;
-          }
-          if (towerRng() >= TOWER_SEED_CHANCE) {
-            continue;
-          }
-          placeTower(map, elevationMap, x, y);
-          towers.push({ x, y, idx });
-          break;
-        }
-        if (towers.length) {
-          break;
-        }
+      const firstSpot = pickFirstTowerCandidate(map, towerRng);
+      if (firstSpot && towerRng() < TOWER_SEED_CHANCE) {
+        placeTower(map, elevationMap, firstSpot.x, firstSpot.y);
+        towers.push(firstSpot);
       }
     }
 
