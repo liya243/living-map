@@ -131,8 +131,14 @@ const TOWER_MAX_GRASS_MIN = 3;
 const DEBUG_TOWER_HEIGHT = 0.08;
 const DEBUG_TOWER_LIFT = 0.03;
 const DEBUG_TOWER_OPACITY = 0.65;
-const DEBUG_TOWER_COLOR_EDGE = "#d26bff";
-const DEBUG_TOWER_COLOR_SHORE = "#5fd8ff";
+const DEBUG_TOWER_COLORS = {
+  edge: "#d26bff",
+  shore: "#5fd8ff",
+  blocked: "#ff4d4d",
+  no_house: "#ff9b45",
+  not_maxed: "#f5d04b",
+  invalid: "#3a3a3a",
+};
 const WALL_CONNECT_CHANCE = 0.7;
 const WALL_MAX_DISTANCE = 16;
 const FOG_APPEAR_CHANCE = 0.22;
@@ -1492,6 +1498,39 @@ const collectTowerCandidates = (map) => {
     }
   }
   return { shore, edge };
+};
+
+const collectTowerDebugReasons = (map) => {
+  const results = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      const biomeIndex = map.biomes[idx];
+      if (
+        biomeIndex !== BIOME_INDEX.grass &&
+        biomeIndex !== BIOME_INDEX.sand &&
+        biomeIndex !== BIOME_INDEX.dirt
+      ) {
+        continue;
+      }
+      let kind = null;
+      if (!hasNeighborHouseAny(map, x, y)) {
+        kind = "no_house";
+      } else if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
+        kind = "not_maxed";
+      } else if (hasHousesAllSides(map, x, y)) {
+        kind = "blocked";
+      } else if (isShoreCandidate(map, x, y)) {
+        kind = "shore";
+      } else if (isEdgeCandidate(map, x, y)) {
+        kind = "edge";
+      }
+      if (kind) {
+        results.push({ x, y, idx, kind });
+      }
+    }
+  }
+  return results;
 };
 
 const pickOpenDirection = (map, x, y, rng) => {
@@ -3263,9 +3302,6 @@ const buildDebugOverlay = (candidates) => {
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-  const edgeColor = new THREE.Color(DEBUG_TOWER_COLOR_EDGE);
-  const shoreColor = new THREE.Color(DEBUG_TOWER_COLOR_SHORE);
-
   for (let t = 0; t < candidates.length; t += 1) {
     const candidate = candidates[t];
     const idx = mapData.index(candidate.x, candidate.y);
@@ -3275,7 +3311,8 @@ const buildDebugOverlay = (candidates) => {
     const xOffset = candidate.x - MAP_WIDTH / 2 + 0.5;
     const zOffset = candidate.y - MAP_HEIGHT / 2 + 0.5;
     const bottom = worldHeight + DEBUG_TOWER_LIFT;
-    const color = candidate.kind === "shore" ? shoreColor : edgeColor;
+    const colorValue = DEBUG_TOWER_COLORS[candidate.kind] || DEBUG_TOWER_COLORS.edge;
+    const color = new THREE.Color(colorValue);
     const offset = t * tileStride;
 
     for (let i = 0; i < basePositions.length; i += 3) {
@@ -3326,16 +3363,23 @@ const disposeTileMesh = (mesh) => {
   }
 };
 
-let debugTowersEnabled = false;
+let debugTowerMode = "off";
 
 const refreshDebugOverlay = () => {
-  if (!debugTowersEnabled) {
+  if (debugTowerMode === "off") {
     disposeDebugOverlay();
     return;
   }
-  const { shore, edge } = collectTowerCandidates(mapData);
-  const candidates = edge.length ? [...edge, ...shore] : shore;
-  buildDebugOverlay(candidates);
+  if (debugTowerMode === "candidates") {
+    const { shore, edge } = collectTowerCandidates(mapData);
+    const candidates = edge.length ? [...edge, ...shore] : shore;
+    buildDebugOverlay(candidates);
+    return;
+  }
+  if (debugTowerMode === "reasons") {
+    const reasons = collectTowerDebugReasons(mapData);
+    buildDebugOverlay(reasons);
+  }
 };
 
 const getStoredRenderer = () => {
@@ -3416,6 +3460,7 @@ const playButton = document.getElementById("play");
 const recordButton = document.getElementById("record");
 const rendererNote = document.getElementById("renderer-note");
 const debugTowersToggle = document.getElementById("debug-towers");
+const debugTowersReasonsToggle = document.getElementById("debug-towers-reasons");
 let lastNoteUpdate = 0;
 let fallbackChecked = false;
 let fallbackFrames = 0;
@@ -3448,12 +3493,27 @@ if (rendererSelect) {
   });
 }
 
+const updateDebugModeFromUI = () => {
+  const reasonsOn = debugTowersReasonsToggle ? debugTowersReasonsToggle.checked : false;
+  const candidatesOn = debugTowersToggle ? debugTowersToggle.checked : false;
+  if (reasonsOn && debugTowersToggle) {
+    debugTowersToggle.checked = false;
+  }
+  if (candidatesOn && debugTowersReasonsToggle) {
+    debugTowersReasonsToggle.checked = false;
+  }
+  debugTowerMode = reasonsOn ? "reasons" : candidatesOn ? "candidates" : "off";
+  refreshDebugOverlay();
+};
+
 if (debugTowersToggle) {
-  debugTowersToggle.checked = debugTowersEnabled;
-  debugTowersToggle.addEventListener("change", () => {
-    debugTowersEnabled = debugTowersToggle.checked;
-    refreshDebugOverlay();
-  });
+  debugTowersToggle.checked = debugTowerMode === "candidates";
+  debugTowersToggle.addEventListener("change", updateDebugModeFromUI);
+}
+
+if (debugTowersReasonsToggle) {
+  debugTowersReasonsToggle.checked = debugTowerMode === "reasons";
+  debugTowersReasonsToggle.addEventListener("change", updateDebugModeFromUI);
 }
 
 
