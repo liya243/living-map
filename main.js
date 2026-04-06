@@ -123,12 +123,10 @@ const TOWER_CHAIN_MAX_PER_GEN = 1;
 const TOWER_NEAR_HOUSE_RADIUS = 3;
 const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 5;
-const TOWER_MIN_HOUSES = 8;
+const TOWER_GLOBAL_MIN_HOUSES = 20;
 const TOWER_EDGE_STRIP_HALF_WIDTH = 1;
 const TOWER_SHORE_DISTANCE = 3;
 const TOWER_EDGE_SCAN_DISTANCE = 7;
-const TOWER_MAX_GRASS_RATIO = 0.5;
-const TOWER_MAX_GRASS_MIN = 8;
 const DEBUG_TOWER_HEIGHT = 0.08;
 const DEBUG_TOWER_LIFT = 0.03;
 const DEBUG_TOWER_OPACITY = 0.65;
@@ -1295,55 +1293,7 @@ const countNearbyHouses = (map, x, y, radius) => {
   return count;
 };
 
-const hasAvailableHouseSpot = (map, originX, originY, radius, spacingRadius = 0) => {
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
-      if (dx === 0 && dy === 0) {
-        continue;
-      }
-      const x = originX + dx;
-      const y = originY + dy;
-      if (!map.inBounds(x, y)) {
-        continue;
-      }
-      const idx = map.index(x, y);
-      if (map.biomes[idx] !== BIOME_INDEX.grass) {
-        continue;
-      }
-      if (spacingRadius > 0 && hasNearbyHouse(map, x, y, spacingRadius)) {
-        continue;
-      }
-      return true;
-    }
-  }
-  return false;
-};
-
-const isVillageMaxed = (map, centerX, centerY, radius) => {
-  let houseCount = 0;
-  let grassCount = 0;
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
-      const x = centerX + dx;
-      const y = centerY + dy;
-      if (!map.inBounds(x, y)) {
-        continue;
-      }
-      const idx = map.index(x, y);
-      const biomeIndex = map.biomes[idx];
-      if (isHouseBiome(biomeIndex)) {
-        houseCount += 1;
-      } else if (biomeIndex === BIOME_INDEX.grass) {
-        grassCount += 1;
-      }
-    }
-  }
-  if (houseCount < TOWER_MIN_HOUSES) {
-    return false;
-  }
-  const maxGrass = Math.max(TOWER_MAX_GRASS_MIN, Math.floor(houseCount * TOWER_MAX_GRASS_RATIO));
-  return grassCount <= maxGrass;
-};
+const isVillageBigEnough = (globalHouseCount) => globalHouseCount >= TOWER_GLOBAL_MIN_HOUSES;
 
 const countHousesInStrip = (map, x, y, dir, length, halfWidth) => {
   let count = 0;
@@ -1440,6 +1390,10 @@ const isShoreCandidate = (map, x, y) => {
 };
 
 const pickFirstTowerCandidate = (map, rng) => {
+  const globalHouseCount = countTotalHouses(map);
+  if (!isVillageBigEnough(globalHouseCount)) {
+    return null;
+  }
   const shoreCandidates = [];
   const edgeCandidates = [];
   for (let y = 0; y < map.height; y += 1) {
@@ -1453,9 +1407,6 @@ const pickFirstTowerCandidate = (map, rng) => {
         continue;
       }
       if (!hasNeighborHouseAny(map, x, y)) {
-        continue;
-      }
-      if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
         continue;
       }
       if (isShoreCandidate(map, x, y)) {
@@ -1473,6 +1424,10 @@ const pickFirstTowerCandidate = (map, rng) => {
 };
 
 const collectTowerCandidates = (map) => {
+  const globalHouseCount = countTotalHouses(map);
+  if (!isVillageBigEnough(globalHouseCount)) {
+    return { shore: [], edge: [] };
+  }
   const shore = [];
   const edge = [];
   for (let y = 0; y < map.height; y += 1) {
@@ -1488,9 +1443,6 @@ const collectTowerCandidates = (map) => {
       if (!hasNeighborHouseAny(map, x, y)) {
         continue;
       }
-      if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
-        continue;
-      }
       if (isShoreCandidate(map, x, y)) {
         shore.push({ x, y, idx, kind: "shore" });
       } else if (isEdgeCandidate(map, x, y)) {
@@ -1502,6 +1454,8 @@ const collectTowerCandidates = (map) => {
 };
 
 const collectTowerDebugReasons = (map) => {
+  const globalHouseCount = countTotalHouses(map);
+  const villageReady = isVillageBigEnough(globalHouseCount);
   const results = [];
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
@@ -1517,7 +1471,7 @@ const collectTowerDebugReasons = (map) => {
       let kind = null;
       if (!hasNeighborHouseAny(map, x, y)) {
         kind = "no_house";
-      } else if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
+      } else if (!villageReady) {
         kind = "not_maxed";
       } else if (hasHousesAllSides(map, x, y)) {
         kind = "blocked";
@@ -1569,6 +1523,10 @@ const pickOpenDirection = (map, x, y, rng) => {
 };
 
 const findTowerChainSpot = (map, towers, from, rng) => {
+  const globalHouseCount = countTotalHouses(map);
+  if (!isVillageBigEnough(globalHouseCount)) {
+    return null;
+  }
   const dir = pickOpenDirection(map, from.x, from.y, rng);
   if (!dir) {
     return null;
@@ -1588,9 +1546,6 @@ const findTowerChainSpot = (map, towers, from, rng) => {
       continue;
     }
     if (!hasNeighborHouseAny(map, x, y)) {
-      continue;
-    }
-    if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
       continue;
     }
     if (!isEdgeCandidate(map, x, y)) {
@@ -1703,6 +1658,17 @@ const countTotalRoads = (map) => {
   const size = map.width * map.height;
   for (let i = 0; i < size; i += 1) {
     if (map.biomes[i] === BIOME_INDEX.road) {
+      count += 1;
+    }
+  }
+  return count;
+};
+
+const countTotalHouses = (map) => {
+  let count = 0;
+  const size = map.width * map.height;
+  for (let i = 0; i < size; i += 1) {
+    if (isHouseBiome(map.biomes[i])) {
       count += 1;
     }
   }
