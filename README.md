@@ -3,6 +3,8 @@
 Procedural tile map generator built with Three.js (100x100 mobile preset). Each tile stores a
 height value and a biome color, then renders in a fixed isometric view.
 
+<video src="living-map.webm" controls autoplay loop muted></video>
+
 ## Run
 
 Use any local HTTP server (module imports require it):

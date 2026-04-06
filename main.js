@@ -5,7 +5,7 @@ const IS_MOBILE = true;
 const MAP_WIDTH = MOBILE_MAP_SIZE;
 const MAP_HEIGHT = MAP_WIDTH;
 const MAX_PIXEL_RATIO = 1;
-const BIOME_SCHEMA_VERSION = 2;
+const BIOME_SCHEMA_VERSION = 9;
 const STORAGE_KEY = "wildlands-map-v1";
 const TIMELINE_KEY = "wildlands-timeline-v1";
 const RENDERER_KEY = "wildlands-renderer";
@@ -32,19 +32,27 @@ const BIOMES = [
   { name: "garden_wheat", color: "#e0c25a" },
   { name: "tower", color: "#4b4d53" },
   { name: "wall", color: "#8b6a4b" },
+  { name: "medieval_wood", color: "#9a6a44" },
+  { name: "medieval_stone", color: "#7c8088" },
+  { name: "medieval_brick", color: "#b45f4a" },
+  { name: "coliseum_wall", color: "#5f646e" },
+  { name: "coliseum_stone", color: "#7a808b" },
+  { name: "coliseum_wood", color: "#a0754d" },
+  { name: "coliseum_axis", color: "#8b92a0" },
+  { name: "pyramid", color: "#d6bd82" },
 ];
 
 const BIOME_BASE_HEIGHT = [
   0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48, 0.32, 0.36, 0.46, 0.2,
-  0.22, 0.24, 0.72, 0.34,
+  0.22, 0.24, 0.72, 0.34, 0.32, 0.38, 0.44, 0.38, 0.34, 0.3, 0.34, 0.28,
 ];
 const BIOME_JITTER = [
   0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02, 0.015, 0.02, 0.02, 0.015,
-  0.02, 0.02, 0.025, 0.02,
+  0.02, 0.02, 0.025, 0.02, 0.018, 0.018, 0.02, 0.018, 0.018, 0.018, 0.018, 0.02,
 ];
 const BIOME_BASELINE_WEIGHT = [
   0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2, 0.3, 0.28, 0.28, 0.2,
-  0.2, 0.2, 0.15, 0.18,
+  0.2, 0.2, 0.15, 0.18, 0.22, 0.22, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
 ];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
@@ -126,6 +134,50 @@ const TOWER_MAX_HEIGHT_MULT = 1;
 const WALL_HEIGHT_FACTOR = 1;
 const WALL_CONNECT_DISTANCE = 6;
 const BORDER_PADDING = 1;
+const HOUSE_UPGRADE_CHANCE = 0.06;
+const HOUSE_UPGRADE_ADD = 0.08;
+const MEDIEVAL_SEED_CHANCE = 0.006;
+const SHIP_BIG_APPEAR_CHANCE = 0.08;
+const SAIL_HEIGHT_BOOST = 0.16;
+const SAIL_SIDE_DROP = 0.06;
+const COLISEUM_SPAWN_CHANCE = 0.02;
+const COLISEUM_MAX_COUNT = 1;
+const COLISEUM_MIN_DISTANCE = 18;
+const COLISEUM_AXIS_X = 6;
+const COLISEUM_AXIS_Y = 5;
+const COLISEUM_TOOTH_BOOST = 0.05;
+const COLISEUM_STEP_DROP = 0.05;
+const COLISEUM_HEIGHT_BOOST = 0.06;
+const COLISEUM_AXIS_WIDTH = 1;
+const COLISEUM_BUILD_CHANCE = 0.4;
+const COLISEUM_BUILD_STEP = 0.05;
+const COLISEUM_BUILD_START = 0.3;
+const PYRAMID_SPAWN_CHANCE = 0.05;
+const PYRAMID_SIZE = 8;
+const PYRAMID_STEP = 0.08;
+const PYRAMID_MAX_COUNT = 1;
+const PYRAMID_MIN_DISTANCE = 12;
+const PYRAMID_BUILD_CHANCE = 0.4;
+const PYRAMID_BUILD_STEP = 0.04;
+const PYRAMID_BUILD_START = 0.25;
+const PYRAMID_FROM_HOUSE_RADIUS = 10;
+
+const MEDIEVAL_PATTERNS = [
+  // Lines (origin at the lowest end)
+  [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 2, dy: 0 }],
+  [{ dx: 0, dy: 0 }, { dx: -1, dy: 0 }, { dx: -2, dy: 0 }],
+  [{ dx: 0, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: 2 }],
+  [{ dx: 0, dy: 0 }, { dx: 0, dy: -1 }, { dx: 0, dy: -2 }],
+  // L-shapes (origin at the corner)
+  [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 1, dy: 1 }],
+  [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 1, dy: -1 }],
+  [{ dx: 0, dy: 0 }, { dx: -1, dy: 0 }, { dx: -1, dy: 1 }],
+  [{ dx: 0, dy: 0 }, { dx: -1, dy: 0 }, { dx: -1, dy: -1 }],
+  [{ dx: 0, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }],
+  [{ dx: 0, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 1 }],
+  [{ dx: 0, dy: 0 }, { dx: 0, dy: -1 }, { dx: 1, dy: -1 }],
+  [{ dx: 0, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: -1 }],
+];
 const VILLAGE_STALL_THRESHOLD = 3;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
@@ -165,7 +217,23 @@ const isShipBiome = (biomeIndex) =>
 const isWaterBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.water || biomeIndex === BIOME_INDEX.shallow;
 
+const isColiseumBiome = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.coliseum_wall ||
+  biomeIndex === BIOME_INDEX.coliseum_stone ||
+  biomeIndex === BIOME_INDEX.coliseum_wood ||
+  biomeIndex === BIOME_INDEX.coliseum_axis;
+
+const isPyramidBiome = (biomeIndex) => biomeIndex === BIOME_INDEX.pyramid;
+
 const isHouseBiome = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.house ||
+  biomeIndex === BIOME_INDEX.house_big ||
+  biomeIndex === BIOME_INDEX.house_big_tall ||
+  biomeIndex === BIOME_INDEX.medieval_wood ||
+  biomeIndex === BIOME_INDEX.medieval_stone ||
+  biomeIndex === BIOME_INDEX.medieval_brick;
+
+const isBasicHouseBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.house ||
   biomeIndex === BIOME_INDEX.house_big ||
   biomeIndex === BIOME_INDEX.house_big_tall;
@@ -188,6 +256,8 @@ const isDevelopmentBiome = (biomeIndex) =>
   isHouseBiome(biomeIndex) ||
   isRoadBiome(biomeIndex) ||
   isGardenBiome(biomeIndex) ||
+  isColiseumBiome(biomeIndex) ||
+  isPyramidBiome(biomeIndex) ||
   isFortificationBiome(biomeIndex);
 
 class MapData {
@@ -198,9 +268,11 @@ class MapData {
     this.generation = 0;
     this.heightMode = "layered";
     this.villageStall = 0;
+    this.fortified = false;
     this.heights = new Float32Array(width * height);
     this.biomes = new Uint8Array(width * height);
     this.fog = new Float32Array(width * height);
+    this.oldHouses = new Uint8Array(width * height);
   }
 
   index(x, y) {
@@ -233,10 +305,12 @@ class MapData {
       generation: this.generation,
       heightMode: this.heightMode,
       villageStall: this.villageStall,
+      fortified: this.fortified,
       biomeVersion: BIOME_SCHEMA_VERSION,
       heights: Array.from(this.heights),
       biomes: Array.from(this.biomes),
       fog: Array.from(this.fog),
+      oldHouses: Array.from(this.oldHouses),
     };
   }
 
@@ -245,6 +319,7 @@ class MapData {
     map.generation = data.generation || 0;
     map.heightMode = data.heightMode || "legacy";
     map.villageStall = Number.isFinite(data.villageStall) ? data.villageStall : 0;
+    map.fortified = Boolean(data.fortified);
     map.heights.set(data.heights);
     if (Array.isArray(data.biomes)) {
       const length = Math.min(map.biomes.length, data.biomes.length);
@@ -261,6 +336,14 @@ class MapData {
           next = BIOME_INDEX.garden_pumpkin;
         } else if (value === 19) {
           next = BIOME_INDEX.garden_wheat;
+        } else if (biomeVersion < 6 && (value === 24 || value === 25 || value === 26)) {
+          next = BIOME_INDEX.dirt;
+        } else if (biomeVersion < 7 && value === 24) {
+          next = BIOME_INDEX.coliseum_stone;
+        } else if (biomeVersion < 7 && value === 25) {
+          next = BIOME_INDEX.coliseum_wood;
+        } else if (biomeVersion < 7 && value === 26) {
+          next = BIOME_INDEX.coliseum_axis;
         } else if (value >= BIOMES.length) {
           next = BIOME_INDEX.grass;
         }
@@ -269,6 +352,24 @@ class MapData {
     }
     if (Array.isArray(data.fog) && data.fog.length === map.fog.length) {
       map.fog.set(data.fog);
+    }
+    if (Array.isArray(data.oldHouses) && data.oldHouses.length === map.oldHouses.length) {
+      map.oldHouses.set(data.oldHouses);
+    }
+    if (!data.fortified) {
+      for (let i = 0; i < map.biomes.length; i += 1) {
+        if (map.biomes[i] === BIOME_INDEX.tower || map.biomes[i] === BIOME_INDEX.wall) {
+          map.fortified = true;
+          break;
+        }
+      }
+    }
+    if (!Array.isArray(data.oldHouses) && map.fortified) {
+      for (let i = 0; i < map.biomes.length; i += 1) {
+        if (isBasicHouseBiome(map.biomes[i])) {
+          map.oldHouses[i] = 1;
+        }
+      }
     }
     return map;
   }
@@ -279,10 +380,14 @@ const cloneMapData = (source) => {
   map.generation = source.generation;
   map.heightMode = source.heightMode;
   map.villageStall = Number.isFinite(source.villageStall) ? source.villageStall : 0;
+  map.fortified = Boolean(source.fortified);
   map.heights.set(source.heights);
   map.biomes.set(source.biomes);
   if (source.fog && source.fog.length === map.fog.length) {
     map.fog.set(source.fog);
+  }
+  if (source.oldHouses && source.oldHouses.length === map.oldHouses.length) {
+    map.oldHouses.set(source.oldHouses);
   }
   return map;
 };
@@ -1336,11 +1441,587 @@ const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
   return false;
 };
 
+const canReplaceForMedieval = (map, idx) => {
+  const biome = map.biomes[idx];
+  if (isHouseBiome(biome)) {
+    return map.oldHouses[idx] === 1;
+  }
+  return biome === BIOME_INDEX.grass || biome === BIOME_INDEX.sand || biome === BIOME_INDEX.dirt;
+};
+
+const placeMedievalHouse = (map, elevationMap, tiles) => {
+  const sequence = [
+    { biome: BIOME_INDEX.medieval_wood, tile: tiles[0] },
+    { biome: BIOME_INDEX.medieval_stone, tile: tiles[1] },
+    { biome: BIOME_INDEX.medieval_brick, tile: tiles[2] },
+  ];
+  for (const entry of sequence) {
+    const { x, y, idx } = entry.tile;
+    map.biomes[idx] = entry.biome;
+    const baseline = baselineForGeneration(
+      elevationMap[idx],
+      x,
+      y,
+      map.seed,
+      map.generation,
+    );
+    map.heights[idx] = biomeHeightFor(entry.biome, x, y, map.seed, baseline, 0);
+  }
+};
+
+const applyMedievalConversion = (map, elevationMap) => {
+  if (!map.fortified) {
+    return;
+  }
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (map.oldHouses[idx] !== 1 || !isBasicHouseBiome(map.biomes[idx])) {
+        continue;
+      }
+      const roll = hash2(x, y, map.seed + map.generation * 3191);
+      if (roll >= MEDIEVAL_SEED_CHANCE) {
+        continue;
+      }
+      const start = Math.floor(
+        hash2(x, y, map.seed + map.generation * 3203) * MEDIEVAL_PATTERNS.length,
+      );
+      let placed = false;
+      for (let i = 0; i < MEDIEVAL_PATTERNS.length; i += 1) {
+        const pattern = MEDIEVAL_PATTERNS[(start + i) % MEDIEVAL_PATTERNS.length];
+        const tiles = [];
+        let ok = true;
+        for (const offset of pattern) {
+          const tx = x + offset.dx;
+          const ty = y + offset.dy;
+          if (!map.inBounds(tx, ty)) {
+            ok = false;
+            break;
+          }
+          const tIdx = map.index(tx, ty);
+          if (!canReplaceForMedieval(map, tIdx)) {
+            ok = false;
+            break;
+          }
+          tiles.push({
+            x: tx,
+            y: ty,
+            idx: tIdx,
+            dist: Math.abs(offset.dx) + Math.abs(offset.dy),
+          });
+        }
+        if (!ok) {
+          continue;
+        }
+        tiles.sort((a, b) => a.dist - b.dist);
+        placeMedievalHouse(map, elevationMap, tiles);
+        for (const tile of tiles) {
+          map.oldHouses[tile.idx] = 0;
+        }
+        placed = true;
+        break;
+      }
+      if (placed) {
+        continue;
+      }
+    }
+  }
+};
+
+const canPlaceColiseumOn = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.grass ||
+  biomeIndex === BIOME_INDEX.sand ||
+  biomeIndex === BIOME_INDEX.dirt ||
+  biomeIndex === BIOME_INDEX.forest ||
+  biomeIndex === BIOME_INDEX.road ||
+  biomeIndex === BIOME_INDEX.garden_pumpkin ||
+  biomeIndex === BIOME_INDEX.garden_wheat ||
+  isHouseBiome(biomeIndex) ||
+  isColiseumBiome(biomeIndex);
+
+const canReplaceForColiseum = (biomeIndex) =>
+  !isWaterBiome(biomeIndex) &&
+  !isShipBiome(biomeIndex) &&
+  !isFortificationBiome(biomeIndex) &&
+  !isPyramidBiome(biomeIndex) &&
+  biomeIndex !== BIOME_INDEX.rock &&
+  biomeIndex !== BIOME_INDEX.snow &&
+  biomeIndex !== BIOME_INDEX.lava &&
+  biomeIndex !== BIOME_INDEX.fire;
+
+const collectColiseumComponents = (map) => {
+  const size = map.width * map.height;
+  const visited = new Uint8Array(size);
+  const components = [];
+  for (let idx = 0; idx < size; idx += 1) {
+    if (visited[idx] || !isColiseumBiome(map.biomes[idx])) {
+      continue;
+    }
+    const queue = [idx];
+    const tiles = [];
+    visited[idx] = 1;
+    while (queue.length) {
+      const current = queue.pop();
+      tiles.push(current);
+      const x = current % map.width;
+      const y = Math.floor(current / map.width);
+      const neighbors = [
+        { x: x + 1, y },
+        { x: x - 1, y },
+        { x, y: y + 1 },
+        { x, y: y - 1 },
+      ];
+      for (const neighbor of neighbors) {
+        if (!map.inBounds(neighbor.x, neighbor.y)) {
+          continue;
+        }
+        const nIdx = map.index(neighbor.x, neighbor.y);
+        if (visited[nIdx] || !isColiseumBiome(map.biomes[nIdx])) {
+          continue;
+        }
+        visited[nIdx] = 1;
+        queue.push(nIdx);
+      }
+    }
+    if (!tiles.length) {
+      continue;
+    }
+    let sumX = 0;
+    let sumY = 0;
+    for (const tile of tiles) {
+      sumX += tile % map.width;
+      sumY += Math.floor(tile / map.width);
+    }
+    const centerX = Math.round(sumX / tiles.length);
+    const centerY = Math.round(sumY / tiles.length);
+    components.push({
+      x: centerX,
+      y: centerY,
+    });
+  }
+  return components;
+};
+
+const buildColiseumTiles = (map, elevationMap, centerX, centerY) => {
+  const minX = Math.max(0, centerX - COLISEUM_AXIS_X - 1);
+  const maxX = Math.min(map.width - 1, centerX + COLISEUM_AXIS_X + 1);
+  const minY = Math.max(0, centerY - COLISEUM_AXIS_Y - 1);
+  const maxY = Math.min(map.height - 1, centerY + COLISEUM_AXIS_Y + 1);
+  const centerRadius = Math.max(1, Math.floor(COLISEUM_AXIS_Y * 0.35));
+  const borderThickness = 1 / Math.max(1, COLISEUM_AXIS_Y);
+  const maxStoneDepth = Math.max(0, Math.floor((COLISEUM_AXIS_Y - 0.5) - centerRadius));
+  const tiles = [];
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const dx = (x - centerX) / COLISEUM_AXIS_X;
+      const dy = (y - centerY) / COLISEUM_AXIS_Y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1 + borderThickness) {
+        continue;
+      }
+      if (!map.inBounds(x, y)) {
+        return null;
+      }
+      const idx = map.index(x, y);
+      if (!canReplaceForColiseum(map.biomes[idx])) {
+        return null;
+      }
+    }
+  }
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const dx = (x - centerX) / COLISEUM_AXIS_X;
+      const dy = (y - centerY) / COLISEUM_AXIS_Y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1 + borderThickness) {
+        continue;
+      }
+      const idx = map.index(x, y);
+      const baseline = baselineForGeneration(
+        elevationMap[idx],
+        x,
+        y,
+        map.seed,
+        map.generation,
+      );
+      let biome = BIOME_INDEX.coliseum_stone;
+      let heightValue = 0;
+      if (dist >= 1 - borderThickness) {
+        biome = BIOME_INDEX.coliseum_wall;
+        heightValue = biomeHeightFor(biome, x, y, map.seed, baseline, 0);
+        heightValue = clamp(heightValue + COLISEUM_HEIGHT_BOOST, 0, 1);
+        if ((x + y) % 2 === 0) {
+          heightValue = clamp(heightValue + COLISEUM_TOOTH_BOOST, 0, 1);
+        }
+      } else if (dist <= centerRadius / Math.max(1, COLISEUM_AXIS_Y)) {
+        biome = BIOME_INDEX.coliseum_wood;
+        const baseHeight = biomeHeightFor(biome, x, y, map.seed, baseline, 0);
+        heightValue = clamp(
+          baseHeight + COLISEUM_HEIGHT_BOOST - maxStoneDepth * COLISEUM_STEP_DROP,
+          0,
+          1,
+        );
+      } else {
+        const axis =
+          Math.abs(x - centerX) <= COLISEUM_AXIS_WIDTH ||
+          Math.abs(y - centerY) <= COLISEUM_AXIS_WIDTH;
+        biome = axis ? BIOME_INDEX.coliseum_axis : BIOME_INDEX.coliseum_stone;
+        const baseHeight = biomeHeightFor(biome, x, y, map.seed, baseline, 0);
+        const depth = Math.max(
+          0,
+          Math.floor((1 - borderThickness - dist) * COLISEUM_AXIS_Y),
+        );
+        heightValue = clamp(
+          baseHeight + COLISEUM_HEIGHT_BOOST - depth * COLISEUM_STEP_DROP,
+          0,
+          1,
+        );
+      }
+      tiles.push({ idx, x, y, biome, height: heightValue });
+    }
+  }
+
+  return tiles;
+};
+
+const placeColiseum = (map, elevationMap, centerX, centerY) => {
+  const tiles = buildColiseumTiles(map, elevationMap, centerX, centerY);
+  if (!tiles) {
+    return false;
+  }
+  for (const tile of tiles) {
+    map.biomes[tile.idx] = tile.biome;
+    map.heights[tile.idx] = tile.height * COLISEUM_BUILD_START;
+  }
+  return true;
+};
+
+const applyColiseumConstruction = (map, previousMap, elevationMap, coliseums) => {
+  if (!coliseums.length) {
+    return;
+  }
+  const rng = mulberry32(map.seed + map.generation * 3413);
+  for (const coliseum of coliseums) {
+    const tiles = buildColiseumTiles(map, elevationMap, coliseum.x, coliseum.y);
+    if (!tiles) {
+      continue;
+    }
+    for (const tile of tiles) {
+      map.biomes[tile.idx] = tile.biome;
+      let heightValue =
+        previousMap && isColiseumBiome(previousMap.biomes[tile.idx])
+          ? previousMap.heights[tile.idx]
+          : tile.height * COLISEUM_BUILD_START;
+      if (heightValue < tile.height && rng() < COLISEUM_BUILD_CHANCE) {
+        heightValue = Math.min(tile.height, heightValue + COLISEUM_BUILD_STEP);
+      }
+      map.heights[tile.idx] = heightValue;
+    }
+  }
+};
+
+const canPlacePyramidOn = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.grass ||
+  biomeIndex === BIOME_INDEX.sand ||
+  biomeIndex === BIOME_INDEX.dirt ||
+  biomeIndex === BIOME_INDEX.forest;
+
+const hasNearbyPyramid = (map, cx, cy, radius) => {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      const x = cx + dx;
+      const y = cy + dy;
+      if (!map.inBounds(x, y)) {
+        continue;
+      }
+      if (isPyramidBiome(map.biomes[map.index(x, y)])) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const buildPyramidTiles = (map, elevationMap, originX, originY) => {
+  const tiles = [];
+  for (let y = 0; y < PYRAMID_SIZE; y += 1) {
+    for (let x = 0; x < PYRAMID_SIZE; x += 1) {
+      const gx = originX + x;
+      const gy = originY + y;
+      if (!map.inBounds(gx, gy)) {
+        return null;
+      }
+      const idx = map.index(gx, gy);
+      if (!canPlacePyramidOn(map.biomes[idx])) {
+        return null;
+      }
+      const ring = Math.min(
+        x,
+        y,
+        PYRAMID_SIZE - 1 - x,
+        PYRAMID_SIZE - 1 - y,
+      );
+      const baseline = baselineForGeneration(
+        elevationMap[idx],
+        gx,
+        gy,
+        map.seed,
+        map.generation,
+      );
+      const baseHeight = biomeHeightFor(BIOME_INDEX.pyramid, gx, gy, map.seed, baseline, 0);
+      const targetHeight = clamp(baseHeight + ring * PYRAMID_STEP, 0, 1);
+      tiles.push({ idx, x: gx, y: gy, height: targetHeight });
+    }
+  }
+  return tiles;
+};
+
+const placePyramid = (map, elevationMap, originX, originY) => {
+  const tiles = buildPyramidTiles(map, elevationMap, originX, originY);
+  if (!tiles) {
+    return false;
+  }
+  for (const tile of tiles) {
+    map.biomes[tile.idx] = BIOME_INDEX.pyramid;
+    map.heights[tile.idx] = tile.height * PYRAMID_BUILD_START;
+  }
+  return true;
+};
+
+const collectPyramidComponents = (map) => {
+  const size = map.width * map.height;
+  const visited = new Uint8Array(size);
+  const components = [];
+  for (let idx = 0; idx < size; idx += 1) {
+    if (visited[idx] || !isPyramidBiome(map.biomes[idx])) {
+      continue;
+    }
+    const queue = [idx];
+    visited[idx] = 1;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    while (queue.length) {
+      const current = queue.pop();
+      const x = current % map.width;
+      const y = Math.floor(current / map.width);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      const neighbors = [
+        { x: x + 1, y },
+        { x: x - 1, y },
+        { x, y: y + 1 },
+        { x, y: y - 1 },
+      ];
+      for (const neighbor of neighbors) {
+        if (!map.inBounds(neighbor.x, neighbor.y)) {
+          continue;
+        }
+        const nIdx = map.index(neighbor.x, neighbor.y);
+        if (visited[nIdx] || !isPyramidBiome(map.biomes[nIdx])) {
+          continue;
+        }
+        visited[nIdx] = 1;
+        queue.push(nIdx);
+      }
+    }
+    components.push({ minX, minY, maxX, maxY });
+  }
+  return components;
+};
+
+const applyPyramidConstruction = (map, previousMap, elevationMap) => {
+  const components = collectPyramidComponents(map);
+  if (!components.length) {
+    return;
+  }
+  const rng = mulberry32(map.seed + map.generation * 3539);
+  for (const component of components) {
+    const width = component.maxX - component.minX + 1;
+    const height = component.maxY - component.minY + 1;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const gx = component.minX + x;
+        const gy = component.minY + y;
+        if (!map.inBounds(gx, gy)) {
+          continue;
+        }
+        const idx = map.index(gx, gy);
+        const ring = Math.min(x, y, width - 1 - x, height - 1 - y);
+        const baseline = baselineForGeneration(
+          elevationMap[idx],
+          gx,
+          gy,
+          map.seed,
+          map.generation,
+        );
+        const baseHeight = biomeHeightFor(BIOME_INDEX.pyramid, gx, gy, map.seed, baseline, 0);
+        const targetHeight = clamp(baseHeight + ring * PYRAMID_STEP, 0, 1);
+        let heightValue =
+          previousMap && previousMap.biomes[idx] === BIOME_INDEX.pyramid
+            ? previousMap.heights[idx]
+            : targetHeight * PYRAMID_BUILD_START;
+        if (heightValue < targetHeight && rng() < PYRAMID_BUILD_CHANCE) {
+          heightValue = Math.min(targetHeight, heightValue + PYRAMID_BUILD_STEP);
+        }
+        map.biomes[idx] = BIOME_INDEX.pyramid;
+        map.heights[idx] = heightValue;
+      }
+    }
+  }
+};
+
+const tryPlacePyramid = (map, elevationMap, originX, originY, rng, coliseumsReady) => {
+  if (!coliseumsReady) {
+    return false;
+  }
+  if (rng() >= PYRAMID_SPAWN_CHANCE) {
+    return false;
+  }
+  const pyramids = collectPyramidComponents(map);
+  if (pyramids.length >= PYRAMID_MAX_COUNT) {
+    return false;
+  }
+  if (hasNearbyPyramid(map, originX, originY, PYRAMID_MIN_DISTANCE)) {
+    return false;
+  }
+  const half = Math.floor(PYRAMID_SIZE / 2);
+  const maxRadius = PYRAMID_FROM_HOUSE_RADIUS;
+  const attempts = 10;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const dx = Math.floor(rng() * (maxRadius * 2 + 1)) - maxRadius;
+    const dy = Math.floor(rng() * (maxRadius * 2 + 1)) - maxRadius;
+    const baseX = originX + dx - half;
+    const baseY = originY + dy - half;
+    if (placePyramid(map, elevationMap, baseX, baseY)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const tryPlaceColiseum = (map, elevationMap, coliseums) => {
+  if (!map.fortified) {
+    return false;
+  }
+  if (coliseums.length >= COLISEUM_MAX_COUNT) {
+    return false;
+  }
+  const rng = mulberry32(map.seed + map.generation * 3389);
+  if (rng() >= COLISEUM_SPAWN_CHANCE) {
+    return false;
+  }
+  const villageMask = buildVillageMask(map);
+  const oldEdgeCandidates = [];
+  const oldCandidates = [];
+  for (let y = 1; y < map.height - 1; y += 1) {
+    for (let x = 1; x < map.width - 1; x += 1) {
+      const idx = map.index(x, y);
+      if (!map.oldHouses[idx]) {
+        continue;
+      }
+      if (!villageMask[idx]) {
+        continue;
+      }
+      if (!canPlaceColiseumOn(map.biomes[idx])) {
+        continue;
+      }
+      if (
+        x - COLISEUM_AXIS_X - 1 < 0 ||
+        x + COLISEUM_AXIS_X + 1 >= map.width ||
+        y - COLISEUM_AXIS_Y - 1 < 0 ||
+        y + COLISEUM_AXIS_Y + 1 >= map.height
+      ) {
+        continue;
+      }
+      const neighbors = [
+        map.index(x + 1, y),
+        map.index(x - 1, y),
+        map.index(x, y + 1),
+        map.index(x, y - 1),
+      ];
+      let onEdge = false;
+      for (const nIdx of neighbors) {
+        if (!villageMask[nIdx]) {
+          onEdge = true;
+          break;
+        }
+      }
+      const candidate = { x, y };
+      oldCandidates.push(candidate);
+      if (onEdge) {
+        oldEdgeCandidates.push(candidate);
+      }
+    }
+  }
+  let candidates = oldEdgeCandidates.length ? oldEdgeCandidates : oldCandidates;
+  if (!candidates.length) {
+    return false;
+  }
+  const attempts = Math.min(24, candidates.length);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const pick = candidates[Math.floor(rng() * candidates.length)];
+    let tooClose = false;
+    for (const existing of coliseums) {
+      const dist = Math.hypot(existing.x - pick.x, existing.y - pick.y);
+      if (dist < Math.max(COLISEUM_AXIS_X, COLISEUM_AXIS_Y) + COLISEUM_MIN_DISTANCE) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (tooClose) {
+      continue;
+    }
+    if (placeColiseum(map, elevationMap, pick.x, pick.y)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const upgradeHouses = (map, elevationMap) => {
+  if (!map.fortified) {
+    return;
+  }
+  const upgradeSeed = map.seed + 9127;
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      const biome = map.biomes[idx];
+      if (!isBasicHouseBiome(biome)) {
+        continue;
+      }
+      if (hash2(x, y, upgradeSeed) >= HOUSE_UPGRADE_CHANCE) {
+        continue;
+      }
+      const baseline = baselineForGeneration(
+        elevationMap[idx],
+        x,
+        y,
+        map.seed,
+        map.generation,
+      );
+      const baseHeight = biomeHeightFor(biome, x, y, map.seed, baseline, 0);
+      map.heights[idx] = clamp(baseHeight + HOUSE_UPGRADE_ADD, 0, 1);
+    }
+  }
+};
+
 const isRoadBlocked = (biomeIndex) =>
   isWaterBiome(biomeIndex) ||
   isShipBiome(biomeIndex) ||
   isHouseBiome(biomeIndex) ||
+  isColiseumBiome(biomeIndex) ||
   isFortificationBiome(biomeIndex) ||
+  isPyramidBiome(biomeIndex) ||
   biomeIndex === BIOME_INDEX.rock ||
   biomeIndex === BIOME_INDEX.snow ||
   biomeIndex === BIOME_INDEX.lava ||
@@ -1380,6 +2061,29 @@ const countTotalRoads = (map) => {
 
 const isVillageTile = (biomeIndex) =>
   isRoadBiome(biomeIndex) || isHouseBiome(biomeIndex) || isGardenBiome(biomeIndex);
+
+const syncOldHouses = (map, previousMap, markAll = false) => {
+  if (!map.oldHouses || map.oldHouses.length !== map.biomes.length) {
+    map.oldHouses = new Uint8Array(map.biomes.length);
+  }
+  if (markAll) {
+    for (let i = 0; i < map.biomes.length; i += 1) {
+      map.oldHouses[i] = isBasicHouseBiome(map.biomes[i]) ? 1 : 0;
+    }
+    return;
+  }
+  if (!previousMap || !previousMap.oldHouses) {
+    map.oldHouses.fill(0);
+    return;
+  }
+  for (let i = 0; i < map.biomes.length; i += 1) {
+    if (isBasicHouseBiome(map.biomes[i]) && isBasicHouseBiome(previousMap.biomes[i])) {
+      map.oldHouses[i] = previousMap.oldHouses[i] ? 1 : 0;
+    } else {
+      map.oldHouses[i] = 0;
+    }
+  }
+};
 
 const didVillageGrow = (currentMap, previousMap) => {
   if (!previousMap) {
@@ -1517,6 +2221,16 @@ const canPlaceWallOn = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.dirt ||
   biomeIndex === BIOME_INDEX.forest;
 
+const hasFortifications = (map) => {
+  for (let i = 0; i < map.biomes.length; i += 1) {
+    const biome = map.biomes[i];
+    if (biome === BIOME_INDEX.tower || biome === BIOME_INDEX.wall) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const isNearMapEdge = (map, x, y) =>
   x < BORDER_PADDING ||
   y < BORDER_PADDING ||
@@ -1620,14 +2334,18 @@ const placeWall = (map, elevationMap, x, y, heightValue) => {
 };
 
 const placeBorderTowers = (map, elevationMap) => {
+  if (map.fortified || hasFortifications(map)) {
+    map.fortified = true;
+    return false;
+  }
   if (map.villageStall !== VILLAGE_STALL_THRESHOLD) {
-    return;
+    return false;
   }
   const baseMask = buildVillageMask(map);
   const expandedMask = expandVillageMask(map, baseMask, TOWER_EXPAND_RADIUS);
   const expandedComponents = collectVillageComponents(map, expandedMask);
   if (!expandedComponents.length) {
-    return;
+    return false;
   }
   const placedTowers = [];
   for (let y = 0; y < map.height; y += 1) {
@@ -1721,6 +2439,7 @@ const placeBorderTowers = (map, elevationMap) => {
     }
   };
 
+  let placedAny = false;
   for (const expandedComponent of expandedComponents) {
     if (expandedComponent.length >= TOWER_MIN_VILLAGE_AREA) {
       const border = collectComponentBorder(map, expandedMask, expandedComponent);
@@ -1742,6 +2461,7 @@ const placeBorderTowers = (map, elevationMap) => {
         }
         placeTower(map, elevationMap, candidate.x, candidate.y);
         placedTowers.push({ x: candidate.x, y: candidate.y, idx });
+        placedAny = true;
       }
       placeWallsForBorder(borderMask);
       connectNearbyTowers(map, elevationMap, placedTowers);
@@ -1775,11 +2495,16 @@ const placeBorderTowers = (map, elevationMap) => {
         }
         placeTower(map, elevationMap, candidate.x, candidate.y);
         placedTowers.push({ x: candidate.x, y: candidate.y, idx });
+        placedAny = true;
       }
       placeWallsForBorder(borderMask);
       connectNearbyTowers(map, elevationMap, placedTowers);
     }
   }
+  if (placedAny) {
+    map.fortified = true;
+  }
+  return placedAny;
 };
 
 const growTowers = (map, previousMap) => {
@@ -2044,9 +2769,71 @@ const placeRoad = (map, elevationMap, from, to, rng) => {
   return true;
 };
 
-const stampShip = (map, elevationMap, originX, originY, length, width, horizontal, sailOffsets) => {
+const shipMaskOval = (wx, wy, length, width) => {
+  if (length === 5 && width === 3) {
+    if (wy === 1) {
+      return true;
+    }
+    return wx >= 1 && wx <= 3;
+  }
+  if (length === 7 && width === 3) {
+    if (wy === 1) {
+      return true;
+    }
+    return wx >= 1 && wx <= 5;
+  }
+  return true;
+};
+
+const adjustSailHeights = (map, elevationMap) => {
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (map.biomes[idx] !== BIOME_INDEX.sail) {
+        continue;
+      }
+      const left = map.inBounds(x - 1, y) && map.biomes[map.index(x - 1, y)] === BIOME_INDEX.sail;
+      const right =
+        map.inBounds(x + 1, y) && map.biomes[map.index(x + 1, y)] === BIOME_INDEX.sail;
+      const up = map.inBounds(x, y - 1) && map.biomes[map.index(x, y - 1)] === BIOME_INDEX.sail;
+      const down =
+        map.inBounds(x, y + 1) && map.biomes[map.index(x, y + 1)] === BIOME_INDEX.sail;
+      const isCenter = (left && right) || (up && down);
+      const hasNeighbor = left || right || up || down;
+      const baseline = baselineForGeneration(
+        elevationMap[idx],
+        x,
+        y,
+        map.seed,
+        map.generation,
+      );
+      let heightValue = biomeHeightFor(BIOME_INDEX.sail, x, y, map.seed, baseline, 0);
+      if (isCenter) {
+        heightValue = clamp(heightValue + SAIL_HEIGHT_BOOST, 0, 1);
+      } else if (hasNeighbor) {
+        heightValue = clamp(heightValue - SAIL_SIDE_DROP, 0, 1);
+      }
+      map.heights[idx] = heightValue;
+    }
+  }
+};
+
+const stampShip = (
+  map,
+  elevationMap,
+  originX,
+  originY,
+  length,
+  width,
+  horizontal,
+  sailOffsets,
+  maskFn,
+) => {
   for (let wy = 0; wy < width; wy += 1) {
     for (let wx = 0; wx < length; wx += 1) {
+      if (maskFn && !maskFn(wx, wy, length, width)) {
+        continue;
+      }
       const x = originX + (horizontal ? wx : wy);
       const y = originY + (horizontal ? wy : wx);
       if (!map.inBounds(x, y)) {
@@ -2061,13 +2848,18 @@ const stampShip = (map, elevationMap, originX, originY, length, width, horizonta
 
   for (let wy = 0; wy < width; wy += 1) {
     for (let wx = 0; wx < length; wx += 1) {
+      if (maskFn && !maskFn(wx, wy, length, width)) {
+        continue;
+      }
       const x = originX + (horizontal ? wx : wy);
       const y = originY + (horizontal ? wy : wx);
       const idx = map.index(x, y);
       let biome = BIOME_INDEX.ship;
+      let sailBoost = 0;
       for (const offset of sailOffsets) {
         if (wx === offset.x && wy === offset.y) {
           biome = BIOME_INDEX.sail;
+          sailBoost = Number.isFinite(offset.heightBoost) ? offset.heightBoost : 0;
           break;
         }
       }
@@ -2079,7 +2871,11 @@ const stampShip = (map, elevationMap, originX, originY, length, width, horizonta
         map.seed,
         map.generation,
       );
-      map.heights[idx] = biomeHeightFor(biome, x, y, map.seed, baseline, 0);
+      let heightValue = biomeHeightFor(biome, x, y, map.seed, baseline, 0);
+      if (biome === BIOME_INDEX.sail && sailBoost > 0) {
+        heightValue = clamp(heightValue + sailBoost, 0, 1);
+      }
+      map.heights[idx] = heightValue;
     }
   }
   return true;
@@ -2163,11 +2959,19 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.house ||
           biomeIndex === BIOME_INDEX.house_big ||
           biomeIndex === BIOME_INDEX.house_big_tall ||
+          biomeIndex === BIOME_INDEX.medieval_wood ||
+          biomeIndex === BIOME_INDEX.medieval_stone ||
+          biomeIndex === BIOME_INDEX.medieval_brick ||
           biomeIndex === BIOME_INDEX.road ||
           biomeIndex === BIOME_INDEX.garden_pumpkin ||
           biomeIndex === BIOME_INDEX.garden_wheat ||
           biomeIndex === BIOME_INDEX.tower ||
-          biomeIndex === BIOME_INDEX.wall
+          biomeIndex === BIOME_INDEX.wall ||
+          biomeIndex === BIOME_INDEX.coliseum_wall ||
+          biomeIndex === BIOME_INDEX.coliseum_stone ||
+          biomeIndex === BIOME_INDEX.coliseum_wood ||
+          biomeIndex === BIOME_INDEX.coliseum_axis ||
+          biomeIndex === BIOME_INDEX.pyramid
         ) {
           continue;
         }
@@ -2444,6 +3248,9 @@ const applySpecialBiomes = (map, previousMap) => {
     }
   }
 
+  const coliseumsReady =
+    hasPrevious && collectColiseumComponents(map).length > 0;
+
   if (hasPrevious) {
     const growRng = mulberry32(map.seed + map.generation * 2831);
     for (let y = 0; y < map.height; y += 1) {
@@ -2460,6 +3267,9 @@ const applySpecialBiomes = (map, previousMap) => {
         }
         const target = findNearbyGrass(map, x, y, HOUSE_GROW_RADIUS, growRng, 1);
         if (!target) {
+          continue;
+        }
+        if (tryPlacePyramid(map, elevationMap, target.x, target.y, growRng, coliseumsReady)) {
           continue;
         }
         const wantsBig = growRng() < HOUSE_BIG_GROW_CHANCE;
@@ -2512,6 +3322,9 @@ const applySpecialBiomes = (map, previousMap) => {
         if (roadHouseRng() >= HOUSE_FROM_ROAD_CHANCE) {
           continue;
         }
+        if (tryPlacePyramid(map, elevationMap, x, y, roadHouseRng, coliseumsReady)) {
+          continue;
+        }
         map.biomes[idx] = BIOME_INDEX.house;
         const baseline = baselineForGeneration(
           elevationMap[idx],
@@ -2562,13 +3375,14 @@ const applySpecialBiomes = (map, previousMap) => {
   if (hasPrevious) {
     const roadRng = mulberry32(map.seed + map.generation * 2971);
     let totalRoads = countTotalRoads(map);
+    const roadCap = map.fortified ? ROAD_MAX_TOTAL * 2 : ROAD_MAX_TOTAL;
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
         const idx = map.index(x, y);
         if (map.biomes[idx] !== BIOME_INDEX.grass && map.biomes[idx] !== BIOME_INDEX.sand) {
           continue;
         }
-        if (totalRoads >= ROAD_MAX_TOTAL) {
+        if (totalRoads >= roadCap) {
           break;
         }
         if (countNearbyRoads(map, x, y, ROAD_NEARBY_RADIUS) >= ROAD_MAX_NEARBY) {
@@ -2671,9 +3485,21 @@ const applySpecialBiomes = (map, previousMap) => {
   }
 
   if (hasPrevious) {
-    placeBorderTowers(map, elevationMap);
+    const fortifiedNow = placeBorderTowers(map, elevationMap);
     growTowers(map, previousMap);
     updateWallsFromTowers(map, elevationMap);
+    if (fortifiedNow) {
+      syncOldHouses(map, previousMap, true);
+    }
+    applyMedievalConversion(map, elevationMap);
+    upgradeHouses(map, elevationMap);
+    syncOldHouses(map, previousMap, fortifiedNow);
+    let coliseums = collectColiseumComponents(map);
+    if (tryPlaceColiseum(map, elevationMap, coliseums)) {
+      coliseums = collectColiseumComponents(map);
+    }
+    applyColiseumConstruction(map, previousMap, elevationMap, coliseums);
+    applyPyramidConstruction(map, previousMap, elevationMap);
   }
 
   {
@@ -2718,6 +3544,9 @@ const applySpecialBiomes = (map, previousMap) => {
               1,
             );
             if (closest) {
+              if (tryPlacePyramid(map, elevationMap, closest.x, closest.y, shipRng, coliseumsReady)) {
+                break;
+              }
               map.biomes[closest.idx] = BIOME_INDEX.house;
               const baseline = baselineForGeneration(
                 elevationMap[closest.idx],
@@ -2740,7 +3569,93 @@ const applySpecialBiomes = (map, previousMap) => {
         }
       }
     }
+    if (map.fortified) {
+      const bigRng = mulberry32(map.seed + map.generation * 2797);
+      if (bigRng() < SHIP_BIG_APPEAR_CHANCE) {
+        const length = 7;
+        const width = 3;
+        const sailOffsets = [
+          { x: 2, y: 1, heightBoost: -SAIL_SIDE_DROP },
+          { x: 3, y: 1, heightBoost: SAIL_HEIGHT_BOOST },
+          { x: 4, y: 1, heightBoost: -SAIL_SIDE_DROP },
+        ];
+        const horizontal = bigRng() < 0.5;
+        const maxX = horizontal ? map.width - length : map.width - width;
+        const maxY = horizontal ? map.height - width : map.height - length;
+        const tries = 24;
+        for (let attempt = 0; attempt < tries; attempt += 1) {
+          const x = Math.floor(bigRng() * (maxX + 1));
+          const y = Math.floor(bigRng() * (maxY + 1));
+          if (hasNeighborBiome(map, x, y, BIOME_INDEX.ship, SHIP_MIN_DISTANCE)) {
+            continue;
+          }
+          const shoreSides = shipShoreSides(
+            map,
+            x,
+            y,
+            length,
+            width,
+            horizontal,
+            SHIP_SHORE_BUFFER,
+          );
+          if (shoreSides.length > 1) {
+            continue;
+          }
+          if (
+            stampShip(
+              map,
+              elevationMap,
+              x,
+              y,
+              length,
+              width,
+              horizontal,
+              sailOffsets,
+              shipMaskOval,
+            )
+          ) {
+            if (shoreSides.length === 1 && bigRng() < HOUSE_SPAWN_CHANCE) {
+              const closest = findClosestGrass(
+                map,
+                x,
+                y,
+                length,
+                width,
+                horizontal,
+                HOUSE_SEARCH_RADIUS,
+                bigRng,
+                1,
+              );
+              if (closest) {
+                if (tryPlacePyramid(map, elevationMap, closest.x, closest.y, bigRng, coliseumsReady)) {
+                  break;
+                }
+                map.biomes[closest.idx] = BIOME_INDEX.house;
+                const baseline = baselineForGeneration(
+                  elevationMap[closest.idx],
+                  closest.x,
+                  closest.y,
+                  map.seed,
+                  map.generation,
+                );
+                map.heights[closest.idx] = biomeHeightFor(
+                  BIOME_INDEX.house,
+                  closest.x,
+                  closest.y,
+                  map.seed,
+                  baseline,
+                  0,
+                );
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
   }
+
+  adjustSailHeights(map, elevationMap);
 
   applyFogEvolution(map, hasPrevious ? previousMap : null);
 };
