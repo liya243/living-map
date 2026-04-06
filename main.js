@@ -115,12 +115,16 @@ const GARDEN_MAX_PER_GEN = 2;
 const GARDEN_NEAR_ROAD_RADIUS = 1;
 const GARDEN_SHAPE_RECT_CHANCE = 0.55;
 const GARDEN_TRIES = 10;
-const TOWER_SPAWN_CHANCE = 0.08;
+const TOWER_SEED_CHANCE = 0.06;
+const TOWER_CHAIN_CHANCE = 0.65;
+const TOWER_CHAIN_DISTANCE_MIN = 2;
+const TOWER_CHAIN_DISTANCE_MAX = 4;
+const TOWER_CHAIN_MAX_PER_GEN = 1;
 const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 3;
 const TOWER_MIN_HOUSES = 6;
 const TOWER_EDGE_CLEAR_DISTANCE = 3;
-const TOWER_EDGE_HOUSE_NEARBY = 2;
+const TOWER_EDGE_SCAN_DISTANCE = 7;
 const WALL_CONNECT_CHANCE = 0.7;
 const WALL_MAX_DISTANCE = 16;
 const FOG_APPEAR_CHANCE = 0.22;
@@ -1302,9 +1306,6 @@ const isVillageMaxed = (map, centerX, centerY, radius) => {
 };
 
 const isEdgeCandidate = (map, x, y) => {
-  if (countNearbyHouses(map, x, y, 1) < TOWER_EDGE_HOUSE_NEARBY) {
-    return false;
-  }
   const directions = [
     { dx: 1, dy: 0 },
     { dx: -1, dy: 0 },
@@ -1330,6 +1331,77 @@ const isEdgeCandidate = (map, x, y) => {
     }
   }
   return false;
+};
+
+const pickOpenDirection = (map, x, y, rng) => {
+  const directions = [
+    { dx: 1, dy: 0 },
+    { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: 0, dy: -1 },
+  ];
+  let bestScore = Infinity;
+  let candidates = [];
+  for (const dir of directions) {
+    let score = 0;
+    for (let step = 1; step <= TOWER_EDGE_SCAN_DISTANCE; step += 1) {
+      const nx = x + dir.dx * step;
+      const ny = y + dir.dy * step;
+      if (!map.inBounds(nx, ny)) {
+        break;
+      }
+      const idx = map.index(nx, ny);
+      if (isDevelopmentBiome(map.biomes[idx])) {
+        score += 1;
+      }
+    }
+    if (score < bestScore) {
+      bestScore = score;
+      candidates = [dir];
+    } else if (score === bestScore) {
+      candidates.push(dir);
+    }
+  }
+  if (!candidates.length) {
+    return null;
+  }
+  return candidates[Math.floor(rng() * candidates.length)];
+};
+
+const findTowerChainSpot = (map, towers, from, rng) => {
+  const dir = pickOpenDirection(map, from.x, from.y, rng);
+  if (!dir) {
+    return null;
+  }
+  for (let step = TOWER_CHAIN_DISTANCE_MIN; step <= TOWER_CHAIN_DISTANCE_MAX; step += 1) {
+    const x = from.x + dir.dx * step;
+    const y = from.y + dir.dy * step;
+    if (!map.inBounds(x, y)) {
+      break;
+    }
+    const idx = map.index(x, y);
+    if (
+      map.biomes[idx] !== BIOME_INDEX.grass &&
+      map.biomes[idx] !== BIOME_INDEX.sand &&
+      map.biomes[idx] !== BIOME_INDEX.dirt
+    ) {
+      continue;
+    }
+    if (!hasNeighborHouseAny(map, x, y)) {
+      continue;
+    }
+    if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
+      continue;
+    }
+    if (!isEdgeCandidate(map, x, y)) {
+      continue;
+    }
+    if (hasNearbyTower(towers, x, y, TOWER_MIN_DISTANCE)) {
+      continue;
+    }
+    return { x, y, idx };
+  }
+  return null;
 };
 
 const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
@@ -2345,33 +2417,59 @@ const applySpecialBiomes = (map, previousMap) => {
   if (hasPrevious) {
     const towerRng = mulberry32(map.seed + map.generation * 3089);
     const towers = collectTowers(map);
-    for (let y = 0; y < map.height; y += 1) {
-      for (let x = 0; x < map.width; x += 1) {
-        const idx = map.index(x, y);
-        if (
-          map.biomes[idx] !== BIOME_INDEX.grass &&
-          map.biomes[idx] !== BIOME_INDEX.sand &&
-          map.biomes[idx] !== BIOME_INDEX.dirt
-        ) {
+    if (!towers.length) {
+      for (let y = 0; y < map.height; y += 1) {
+        for (let x = 0; x < map.width; x += 1) {
+          const idx = map.index(x, y);
+          if (
+            map.biomes[idx] !== BIOME_INDEX.grass &&
+            map.biomes[idx] !== BIOME_INDEX.sand &&
+            map.biomes[idx] !== BIOME_INDEX.dirt
+          ) {
+            continue;
+          }
+          if (!hasNeighborHouseAny(map, x, y)) {
+            continue;
+          }
+          if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
+            continue;
+          }
+          if (!isEdgeCandidate(map, x, y)) {
+            continue;
+          }
+          if (towerRng() >= TOWER_SEED_CHANCE) {
+            continue;
+          }
+          placeTower(map, elevationMap, x, y);
+          towers.push({ x, y, idx });
+          break;
+        }
+        if (towers.length) {
+          break;
+        }
+      }
+    }
+
+    if (towers.length) {
+      let added = 0;
+      const newTowers = [];
+      for (const tower of towers) {
+        if (added >= TOWER_CHAIN_MAX_PER_GEN) {
+          break;
+        }
+        if (towerRng() >= TOWER_CHAIN_CHANCE) {
           continue;
         }
-        if (!hasNeighborHouseAny(map, x, y)) {
+        const spot = findTowerChainSpot(map, towers, tower, towerRng);
+        if (!spot) {
           continue;
         }
-        if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
-          continue;
-        }
-        if (!isEdgeCandidate(map, x, y)) {
-          continue;
-        }
-        if (hasNearbyTower(towers, x, y, TOWER_MIN_DISTANCE)) {
-          continue;
-        }
-        if (towerRng() >= TOWER_SPAWN_CHANCE) {
-          continue;
-        }
-        placeTower(map, elevationMap, x, y);
-        towers.push({ x, y, idx });
+        placeTower(map, elevationMap, spot.x, spot.y);
+        newTowers.push({ x: spot.x, y: spot.y, idx: spot.idx });
+        added += 1;
+      }
+      if (newTowers.length) {
+        towers.push(...newTowers);
       }
     }
 
