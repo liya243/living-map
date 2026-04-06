@@ -30,19 +30,21 @@ const BIOMES = [
   { name: "road", color: "#d2c29a" },
   { name: "garden_pumpkin", color: "#d88a3c" },
   { name: "garden_wheat", color: "#e0c25a" },
+  { name: "tower", color: "#4b4d53" },
+  { name: "wall", color: "#595b60" },
 ];
 
 const BIOME_BASE_HEIGHT = [
   0.06, 0.16, 0.28, 0.4, 0.46, 0.46, 0.46, 0.1, 0.34, 0.3, 0.24, 0.26, 0.48, 0.32, 0.36, 0.46, 0.2,
-  0.22, 0.24,
+  0.22, 0.24, 0.72, 0.34,
 ];
 const BIOME_JITTER = [
   0.0, 0.02, 0.025, 0.035, 0.03, 0.03, 0.03, 0.01, 0.03, 0.03, 0.02, 0.015, 0.02, 0.015, 0.02, 0.02, 0.015,
-  0.02, 0.02,
+  0.02, 0.02, 0.025, 0.02,
 ];
 const BIOME_BASELINE_WEIGHT = [
   0.05, 0.25, 0.35, 0.4, 0.25, 0.25, 0.25, 0.08, 0.32, 0.34, 0.3, 0.2, 0.2, 0.3, 0.28, 0.28, 0.2,
-  0.2, 0.2,
+  0.2, 0.2, 0.15, 0.18,
 ];
 const BASELINE_AMPLITUDE = 0.18;
 const BASELINE_SCALE = 1 / 42;
@@ -113,6 +115,12 @@ const GARDEN_MAX_PER_GEN = 2;
 const GARDEN_NEAR_ROAD_RADIUS = 1;
 const GARDEN_SHAPE_RECT_CHANCE = 0.55;
 const GARDEN_TRIES = 10;
+const TOWER_SPAWN_CHANCE = 0.08;
+const TOWER_MIN_DISTANCE = 6;
+const TOWER_HOUSE_RADIUS = 3;
+const TOWER_MIN_HOUSES = HOUSE_GROW_MAX_NEARBY;
+const WALL_CONNECT_CHANCE = 0.7;
+const WALL_MAX_DISTANCE = 16;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -142,7 +150,8 @@ const isLavaPassable = (biomeIndex) =>
   biomeIndex !== BIOME_INDEX.water &&
   biomeIndex !== BIOME_INDEX.shallow &&
   biomeIndex !== BIOME_INDEX.ship &&
-  biomeIndex !== BIOME_INDEX.sail;
+  biomeIndex !== BIOME_INDEX.sail &&
+  !isFortificationBiome(biomeIndex);
 
 const isShipBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.ship || biomeIndex === BIOME_INDEX.sail;
@@ -163,8 +172,17 @@ const isGardenBiome = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.garden_pumpkin ||
   biomeIndex === BIOME_INDEX.garden_wheat;
 
+const isTowerBiome = (biomeIndex) => biomeIndex === BIOME_INDEX.tower;
+
+const isWallBiome = (biomeIndex) => biomeIndex === BIOME_INDEX.wall;
+
+const isFortificationBiome = (biomeIndex) => isTowerBiome(biomeIndex) || isWallBiome(biomeIndex);
+
 const isDevelopmentBiome = (biomeIndex) =>
-  isHouseBiome(biomeIndex) || isRoadBiome(biomeIndex) || isGardenBiome(biomeIndex);
+  isHouseBiome(biomeIndex) ||
+  isRoadBiome(biomeIndex) ||
+  isGardenBiome(biomeIndex) ||
+  isFortificationBiome(biomeIndex);
 
 class MapData {
   constructor(width, height, seed) {
@@ -1300,6 +1318,7 @@ const isRoadBlocked = (biomeIndex) =>
   isWaterBiome(biomeIndex) ||
   isShipBiome(biomeIndex) ||
   isHouseBiome(biomeIndex) ||
+  isFortificationBiome(biomeIndex) ||
   biomeIndex === BIOME_INDEX.rock ||
   biomeIndex === BIOME_INDEX.snow ||
   biomeIndex === BIOME_INDEX.lava ||
@@ -1335,6 +1354,114 @@ const countTotalRoads = (map) => {
     }
   }
   return count;
+};
+
+const collectTowers = (map) => {
+  const towers = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (map.biomes[idx] === BIOME_INDEX.tower) {
+        towers.push({ x, y, idx });
+      }
+    }
+  }
+  return towers;
+};
+
+const hasNearbyTower = (towers, x, y, minDistance) => {
+  for (const tower of towers) {
+    const dist = Math.abs(tower.x - x) + Math.abs(tower.y - y);
+    if (dist <= minDistance) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const hasNeighborHouseAny = (map, x, y) => {
+  for (let dy = -1; dy <= 1; dy += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      if (Math.abs(dx) + Math.abs(dy) !== 1) {
+        continue;
+      }
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (isHouseBiome(map.biomes[idx])) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const placeTower = (map, elevationMap, x, y) => {
+  const idx = map.index(x, y);
+  map.biomes[idx] = BIOME_INDEX.tower;
+  const baseline = baselineForGeneration(
+    elevationMap[idx],
+    x,
+    y,
+    map.seed,
+    map.generation,
+  );
+  map.heights[idx] = biomeHeightFor(BIOME_INDEX.tower, x, y, map.seed, baseline, 0);
+};
+
+const isWallBlocked = (biomeIndex) =>
+  isWaterBiome(biomeIndex) ||
+  isShipBiome(biomeIndex) ||
+  isHouseBiome(biomeIndex) ||
+  isFortificationBiome(biomeIndex) ||
+  isGardenBiome(biomeIndex) ||
+  biomeIndex === BIOME_INDEX.road ||
+  biomeIndex === BIOME_INDEX.rock ||
+  biomeIndex === BIOME_INDEX.snow ||
+  biomeIndex === BIOME_INDEX.lava ||
+  biomeIndex === BIOME_INDEX.fire;
+
+const placeWallLine = (map, elevationMap, from, to, rng) => {
+  const horizontalFirst = rng() < 0.5;
+  const points = traceRoadPath(from, to, horizontalFirst);
+  for (const point of points) {
+    if (!map.inBounds(point.x, point.y)) {
+      return false;
+    }
+    const idx = map.index(point.x, point.y);
+    const isEndpoint =
+      (point.x === from.x && point.y === from.y) || (point.x === to.x && point.y === to.y);
+    if (isEndpoint) {
+      if (!isTowerBiome(map.biomes[idx])) {
+        return false;
+      }
+      continue;
+    }
+    if (isWallBlocked(map.biomes[idx])) {
+      return false;
+    }
+  }
+  for (const point of points) {
+    const idx = map.index(point.x, point.y);
+    const isEndpoint =
+      (point.x === from.x && point.y === from.y) || (point.x === to.x && point.y === to.y);
+    if (isEndpoint || isWallBlocked(map.biomes[idx])) {
+      continue;
+    }
+    map.biomes[idx] = BIOME_INDEX.wall;
+    const baseline = baselineForGeneration(
+      elevationMap[idx],
+      point.x,
+      point.y,
+      map.seed,
+      map.generation,
+    );
+    map.heights[idx] = biomeHeightFor(BIOME_INDEX.wall, point.x, point.y, map.seed, baseline, 0);
+  }
+  return true;
 };
 
 const stampGarden = (
@@ -1629,7 +1756,9 @@ const applySpecialBiomes = (map, previousMap) => {
           biomeIndex === BIOME_INDEX.house_big_tall ||
           biomeIndex === BIOME_INDEX.road ||
           biomeIndex === BIOME_INDEX.garden_pumpkin ||
-          biomeIndex === BIOME_INDEX.garden_wheat
+          biomeIndex === BIOME_INDEX.garden_wheat ||
+          biomeIndex === BIOME_INDEX.tower ||
+          biomeIndex === BIOME_INDEX.wall
         ) {
           continue;
         }
@@ -2128,6 +2257,61 @@ const applySpecialBiomes = (map, previousMap) => {
             gardensPlaced += 1;
           }
         }
+      }
+    }
+  }
+
+  if (hasPrevious) {
+    const towerRng = mulberry32(map.seed + map.generation * 3089);
+    const towers = collectTowers(map);
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const idx = map.index(x, y);
+        if (
+          map.biomes[idx] !== BIOME_INDEX.grass &&
+          map.biomes[idx] !== BIOME_INDEX.sand &&
+          map.biomes[idx] !== BIOME_INDEX.dirt
+        ) {
+          continue;
+        }
+        if (!hasNeighborHouseAny(map, x, y)) {
+          continue;
+        }
+        if (countNearbyHouses(map, x, y, TOWER_HOUSE_RADIUS) < TOWER_MIN_HOUSES) {
+          continue;
+        }
+        if (hasNearbyTower(towers, x, y, TOWER_MIN_DISTANCE)) {
+          continue;
+        }
+        if (towerRng() >= TOWER_SPAWN_CHANCE) {
+          continue;
+        }
+        placeTower(map, elevationMap, x, y);
+        towers.push({ x, y, idx });
+      }
+    }
+
+    if (towers.length > 1) {
+      for (let i = 0; i < towers.length; i += 1) {
+        let closest = null;
+        let closestDist = Infinity;
+        for (let j = 0; j < towers.length; j += 1) {
+          if (i === j) {
+            continue;
+          }
+          const dist = Math.abs(towers[i].x - towers[j].x) + Math.abs(towers[i].y - towers[j].y);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closest = towers[j];
+          }
+        }
+        if (!closest || closestDist > WALL_MAX_DISTANCE) {
+          continue;
+        }
+        if (towerRng() >= WALL_CONNECT_CHANCE) {
+          continue;
+        }
+        placeWallLine(map, elevationMap, towers[i], closest, towerRng);
       }
     }
   }

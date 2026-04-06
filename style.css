@@ -27,6 +27,8 @@
   --road: #d2c29a;
   --garden-pumpkin: #d88a3c;
   --garden-wheat: #e0c25a;
+  --tower: #4b4d53;
+  --wall: #595b60;
 }
 
 *,
@@ -308,6 +310,14 @@ button:hover {
 
 .swatch.garden-wheat {
   background: var(--garden-wheat);
+}
+
+.swatch.tower {
+  background: var(--tower);
+}
+
+.swatch.wall {
+  background: var(--wall);
 }
 
 .swatch.sakura {
