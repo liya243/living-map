@@ -118,6 +118,7 @@ const GARDEN_TRIES = 10;
 const TOWER_EXPAND_RADIUS = 4;
 const TOWER_BORDER_SPACING = 3;
 const TOWER_MIN_VILLAGE_AREA = 400;
+const VILLAGE_STALL_THRESHOLD = 3;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
 const FOG_MOVE_CHANCE = 0.36;
@@ -188,6 +189,7 @@ class MapData {
     this.seed = seed;
     this.generation = 0;
     this.heightMode = "layered";
+    this.villageStall = 0;
     this.heights = new Float32Array(width * height);
     this.biomes = new Uint8Array(width * height);
     this.fog = new Float32Array(width * height);
@@ -222,6 +224,7 @@ class MapData {
       seed: this.seed,
       generation: this.generation,
       heightMode: this.heightMode,
+      villageStall: this.villageStall,
       biomeVersion: BIOME_SCHEMA_VERSION,
       heights: Array.from(this.heights),
       biomes: Array.from(this.biomes),
@@ -233,6 +236,7 @@ class MapData {
     const map = new MapData(data.width, data.height, data.seed);
     map.generation = data.generation || 0;
     map.heightMode = data.heightMode || "legacy";
+    map.villageStall = Number.isFinite(data.villageStall) ? data.villageStall : 0;
     map.heights.set(data.heights);
     if (Array.isArray(data.biomes)) {
       const length = Math.min(map.biomes.length, data.biomes.length);
@@ -1356,6 +1360,19 @@ const countTotalRoads = (map) => {
 const isVillageTile = (biomeIndex) =>
   isRoadBiome(biomeIndex) || isHouseBiome(biomeIndex) || isGardenBiome(biomeIndex);
 
+const didVillageGrow = (currentMap, previousMap) => {
+  if (!previousMap) {
+    return false;
+  }
+  const size = currentMap.width * currentMap.height;
+  for (let i = 0; i < size; i += 1) {
+    if (isVillageTile(currentMap.biomes[i]) && !isVillageTile(previousMap.biomes[i])) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const buildVillageMask = (map) => {
   const size = map.width * map.height;
   const mask = new Uint8Array(size);
@@ -1467,172 +1484,6 @@ const shuffleArray = (array, rng) => {
   }
 };
 
-const hasGrassForHouse = (map, originX, originY, radius) => {
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
-      if (dx === 0 && dy === 0) {
-        continue;
-      }
-      const x = originX + dx;
-      const y = originY + dy;
-      if (!map.inBounds(x, y)) {
-        continue;
-      }
-      const idx = map.index(x, y);
-      if (map.biomes[idx] !== BIOME_INDEX.grass) {
-        continue;
-      }
-      if (hasNearbyHouse(map, x, y, 1)) {
-        continue;
-      }
-      return true;
-    }
-  }
-  return false;
-};
-
-const hasHouseGrowthPotential = (map) => {
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      if (!isHouseBiome(map.biomes[idx])) {
-        continue;
-      }
-      if (countNearbyHouses(map, x, y, HOUSE_GROW_MAX_RADIUS) >= HOUSE_GROW_MAX_NEARBY) {
-        continue;
-      }
-      if (hasGrassForHouse(map, x, y, HOUSE_GROW_RADIUS)) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-const hasHouseFromRoadPotential = (map) => {
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      if (map.biomes[idx] !== BIOME_INDEX.grass) {
-        continue;
-      }
-      if (!hasNeighborBiome(map, x, y, BIOME_INDEX.road, HOUSE_FROM_ROAD_RADIUS, true)) {
-        continue;
-      }
-      if (hasNearbyHouse(map, x, y, 1)) {
-        continue;
-      }
-      if (countNearbyHouses(map, x, y, HOUSE_GROW_MAX_RADIUS) >= HOUSE_GROW_MAX_NEARBY) {
-        continue;
-      }
-      return true;
-    }
-  }
-  return false;
-};
-
-const hasRoadGrowthPotential = (map) => {
-  if (countTotalRoads(map) >= ROAD_MAX_TOTAL) {
-    return false;
-  }
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      if (map.biomes[idx] !== BIOME_INDEX.grass && map.biomes[idx] !== BIOME_INDEX.sand) {
-        continue;
-      }
-      if (countNearbyRoads(map, x, y, ROAD_NEARBY_RADIUS) >= ROAD_MAX_NEARBY) {
-        continue;
-      }
-      const nearHouse = hasNearbyHouse(map, x, y, ROAD_NEAR_HOUSE_RADIUS);
-      const nearRoad = hasNeighborBiome(map, x, y, BIOME_INDEX.road, 1, true);
-      if (!nearHouse && !nearRoad) {
-        continue;
-      }
-      return true;
-    }
-  }
-  return false;
-};
-
-const canPlaceGardenAt = (map, originX, originY, width, height, shape) => {
-  const isCircle = shape === "circle";
-  const centerX = originX + (width - 1) / 2;
-  const centerY = originY + (height - 1) / 2;
-  const radius = Math.min(width, height) / 2;
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const gx = originX + x;
-      const gy = originY + y;
-      if (!map.inBounds(gx, gy)) {
-        return false;
-      }
-      if (isCircle) {
-        const dx = gx - centerX;
-        const dy = gy - centerY;
-        if (dx * dx + dy * dy > radius * radius) {
-          continue;
-        }
-      }
-      const idx = map.index(gx, gy);
-      if (map.biomes[idx] !== BIOME_INDEX.grass && map.biomes[idx] !== BIOME_INDEX.sand) {
-        return false;
-      }
-      if (hasNearbyHouse(map, gx, gy, 1)) {
-        return false;
-      }
-      if (map.biomes[idx] === BIOME_INDEX.road) {
-        return false;
-      }
-      if (isGardenBiome(map.biomes[idx])) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
-const hasGardenPotential = (map) => {
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const idx = map.index(x, y);
-      if (map.biomes[idx] !== BIOME_INDEX.road) {
-        continue;
-      }
-      const rectWidth = 3;
-      const rectHeight = 4;
-      const rectRangeX = 2;
-      const rectRangeY = 2;
-      for (let oy = -rectRangeY; oy <= rectRangeY; oy += 1) {
-        for (let ox = -rectRangeX; ox <= rectRangeX; ox += 1) {
-          if (canPlaceGardenAt(map, x + ox, y + oy, rectWidth, rectHeight, "rect")) {
-            return true;
-          }
-        }
-      }
-      const circleWidth = 4;
-      const circleHeight = 4;
-      const circleRangeX = 3;
-      const circleRangeY = 3;
-      for (let oy = -circleRangeY; oy <= circleRangeY; oy += 1) {
-        for (let ox = -circleRangeX; ox <= circleRangeX; ox += 1) {
-          if (canPlaceGardenAt(map, x + ox, y + oy, circleWidth, circleHeight, "circle")) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-  return false;
-};
-
-const hasVillageGrowthPotential = (map) =>
-  hasHouseGrowthPotential(map) ||
-  hasHouseFromRoadPotential(map) ||
-  hasRoadGrowthPotential(map) ||
-  hasGardenPotential(map);
-
 const canPlaceTowerOn = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.grass ||
   biomeIndex === BIOME_INDEX.sand ||
@@ -1663,7 +1514,7 @@ const placeTower = (map, elevationMap, x, y) => {
 };
 
 const placeBorderTowers = (map, elevationMap) => {
-  if (hasVillageGrowthPotential(map)) {
+  if (map.villageStall < VILLAGE_STALL_THRESHOLD) {
     return;
   }
   const baseMask = buildVillageMask(map);
@@ -2699,6 +2550,9 @@ const evolveMapData = (sourceMap, generationIndex) => {
   map.generation = generationIndex;
   applyLayeredHeights(map);
   applySpecialBiomes(map, sourceMap);
+  const grew = didVillageGrow(map, sourceMap);
+  const previousStall = Number.isFinite(sourceMap.villageStall) ? sourceMap.villageStall : 0;
+  map.villageStall = grew ? 0 : Math.min(previousStall + 1, 999);
   return map;
 };
 
