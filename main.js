@@ -119,6 +119,8 @@ const TOWER_SPAWN_CHANCE = 0.08;
 const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 3;
 const TOWER_MIN_HOUSES = 6;
+const TOWER_EDGE_CLEAR_DISTANCE = 3;
+const TOWER_EDGE_HOUSE_NEARBY = 2;
 const WALL_CONNECT_CHANCE = 0.7;
 const WALL_MAX_DISTANCE = 16;
 const FOG_APPEAR_CHANCE = 0.22;
@@ -1299,6 +1301,37 @@ const isVillageMaxed = (map, centerX, centerY, radius) => {
   return houseCount >= TOWER_MIN_HOUSES;
 };
 
+const isEdgeCandidate = (map, x, y) => {
+  if (countNearbyHouses(map, x, y, 1) < TOWER_EDGE_HOUSE_NEARBY) {
+    return false;
+  }
+  const directions = [
+    { dx: 1, dy: 0 },
+    { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: 0, dy: -1 },
+  ];
+  for (const dir of directions) {
+    let clear = true;
+    for (let step = 1; step <= TOWER_EDGE_CLEAR_DISTANCE; step += 1) {
+      const nx = x + dir.dx * step;
+      const ny = y + dir.dy * step;
+      if (!map.inBounds(nx, ny)) {
+        return true;
+      }
+      const idx = map.index(nx, ny);
+      if (isDevelopmentBiome(map.biomes[idx])) {
+        clear = false;
+        break;
+      }
+    }
+    if (clear) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
   const directions = [
     { dx: 1, dy: 0 },
@@ -2326,6 +2359,9 @@ const applySpecialBiomes = (map, previousMap) => {
           continue;
         }
         if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
+          continue;
+        }
+        if (!isEdgeCandidate(map, x, y)) {
           continue;
         }
         if (hasNearbyTower(towers, x, y, TOWER_MIN_DISTANCE)) {
