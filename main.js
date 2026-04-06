@@ -120,6 +120,7 @@ const TOWER_CHAIN_CHANCE = 0.65;
 const TOWER_CHAIN_DISTANCE_MIN = 2;
 const TOWER_CHAIN_DISTANCE_MAX = 4;
 const TOWER_CHAIN_MAX_PER_GEN = 1;
+const TOWER_NEAR_HOUSE_RADIUS = 2;
 const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 5;
 const TOWER_MIN_HOUSES = 10;
@@ -1731,25 +1732,8 @@ const hasNearbyTower = (towers, x, y, minDistance) => {
   return false;
 };
 
-const hasNeighborHouseAny = (map, x, y) => {
-  for (let dy = -1; dy <= 1; dy += 1) {
-    for (let dx = -1; dx <= 1; dx += 1) {
-      if (Math.abs(dx) + Math.abs(dy) !== 1) {
-        continue;
-      }
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!map.inBounds(nx, ny)) {
-        continue;
-      }
-      const idx = map.index(nx, ny);
-      if (isHouseBiome(map.biomes[idx])) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
+const hasNeighborHouseAny = (map, x, y) =>
+  hasNearbyHouse(map, x, y, TOWER_NEAR_HOUSE_RADIUS);
 
 const placeTower = (map, elevationMap, x, y) => {
   const idx = map.index(x, y);
