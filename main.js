@@ -118,6 +118,11 @@ const GARDEN_TRIES = 10;
 const TOWER_EXPAND_RADIUS = 4;
 const TOWER_BORDER_SPACING = 3;
 const TOWER_MIN_VILLAGE_AREA = 400;
+const TOWER_START_HEIGHT = 0.2;
+const TOWER_GROW_CHANCE = 0.35;
+const TOWER_GROW_STEP = 0.05;
+const TOWER_BASELINE_WEIGHT = 0.1;
+const TOWER_MAX_HEIGHT_MULT = 2;
 const VILLAGE_STALL_THRESHOLD = 3;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
@@ -1503,14 +1508,12 @@ const isTowerTooClose = (towers, x, y, minDistance) => {
 const placeTower = (map, elevationMap, x, y) => {
   const idx = map.index(x, y);
   map.biomes[idx] = BIOME_INDEX.tower;
-  const baseline = baselineForGeneration(
-    elevationMap[idx],
-    x,
-    y,
-    map.seed,
-    map.generation,
+  const baseline = baselineForGeneration(elevationMap[idx], x, y, map.seed, map.generation);
+  map.heights[idx] = clamp(
+    TOWER_START_HEIGHT + baseline * TOWER_BASELINE_WEIGHT,
+    0,
+    1,
   );
-  map.heights[idx] = biomeHeightFor(BIOME_INDEX.tower, x, y, map.seed, baseline, 0);
 };
 
 const placeBorderTowers = (map, elevationMap) => {
@@ -1572,6 +1575,36 @@ const placeBorderTowers = (map, elevationMap) => {
         placeTower(map, elevationMap, candidate.x, candidate.y);
         placedTowers.push({ x: candidate.x, y: candidate.y, idx });
       }
+    }
+  }
+};
+
+const growTowers = (map, previousMap) => {
+  if (!previousMap) {
+    return;
+  }
+  const maxHeight = Math.min(
+    1,
+    BIOME_BASE_HEIGHT[BIOME_INDEX.house_big_tall] * TOWER_MAX_HEIGHT_MULT,
+  );
+  const rng = mulberry32(map.seed + map.generation * 4397);
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (map.biomes[idx] !== BIOME_INDEX.tower) {
+        continue;
+      }
+      const prevHeight =
+        previousMap.biomes[idx] === BIOME_INDEX.tower ? previousMap.heights[idx] : null;
+      const elevation = baseElevationFor(x, y, map.seed);
+      const baseline = baselineForGeneration(elevation, x, y, map.seed, map.generation);
+      let heightValue =
+        prevHeight ??
+        clamp(TOWER_START_HEIGHT + baseline * TOWER_BASELINE_WEIGHT, 0, 1);
+      if (heightValue < maxHeight && rng() < TOWER_GROW_CHANCE) {
+        heightValue = Math.min(maxHeight, heightValue + TOWER_GROW_STEP);
+      }
+      map.heights[idx] = heightValue;
     }
   }
 };
@@ -2375,6 +2408,7 @@ const applySpecialBiomes = (map, previousMap) => {
 
   if (hasPrevious) {
     placeBorderTowers(map, elevationMap);
+    growTowers(map, previousMap);
   }
 
   {
@@ -2769,11 +2803,12 @@ const updateFlashAnimation = (time) => {
 
 const flashChangesBetween = (previousMap, currentMap, options = {}) => {
   if (!currentMap) {
-    return;
+    return [];
   }
-  const { biomesOnly = false } = options;
+  const { biomesOnly = false, includeFog = false, includeHeights = true } = options;
   const size = currentMap.width * currentMap.height;
   let changedCount = 0;
+  const changedIndices = [];
   flashMaskTiles.fill(0);
 
   if (
@@ -2783,18 +2818,30 @@ const flashChangesBetween = (previousMap, currentMap, options = {}) => {
   ) {
     for (let i = 0; i < size; i += 1) {
       flashMaskTiles[i] = 1;
+      changedIndices.push(i);
     }
     changedCount = size;
   } else {
+    const prevFog = includeFog ? previousMap.fog : null;
+    const currFog = includeFog ? currentMap.fog : null;
     for (let i = 0; i < size; i += 1) {
-      if (previousMap.biomes[i] !== currentMap.biomes[i]) {
+      const biomeChanged = previousMap.biomes[i] !== currentMap.biomes[i];
+      const heightChanged =
+        includeHeights &&
+        Math.abs(previousMap.heights[i] - currentMap.heights[i]) > FLASH_HEIGHT_EPSILON;
+      const fogChanged =
+        prevFog &&
+        currFog &&
+        Math.abs(prevFog[i] - currFog[i]) > 0.02;
+      if (biomeChanged) {
         flashMaskTiles[i] = 1;
         changedCount += 1;
-        continue;
+      } else if (!biomesOnly && heightChanged) {
+        flashMaskTiles[i] = 1;
+        changedCount += 1;
       }
-      if (!biomesOnly && Math.abs(previousMap.heights[i] - currentMap.heights[i]) > FLASH_HEIGHT_EPSILON) {
-        flashMaskTiles[i] = 1;
-        changedCount += 1;
+      if (biomeChanged || heightChanged || fogChanged) {
+        changedIndices.push(i);
       }
     }
   }
@@ -2808,6 +2855,7 @@ const flashChangesBetween = (previousMap, currentMap, options = {}) => {
     flashState.active = false;
     setFlashUniform(0);
   }
+  return changedIndices;
 };
 
 const buildInstancedTiles = (material) => {
@@ -3154,8 +3202,20 @@ const evolveGeneration = (direction) => {
   if (mapData.heightMode !== "layered") {
     applyLayeredHeights(mapData);
   }
-  refreshTiles();
-  flashChangesBetween(priorMap, mapData, { biomesOnly: true });
+  const changedTiles = flashChangesBetween(priorMap, mapData, {
+    biomesOnly: true,
+    includeFog: true,
+    includeHeights: true,
+  });
+  if (changedTiles.length > tileCount * 0.6) {
+    refreshTiles();
+  } else {
+    for (const idx of changedTiles) {
+      const x = idx % MAP_WIDTH;
+      const y = Math.floor(idx / MAP_WIDTH);
+      updateTileVisual(x, y);
+    }
+  }
   updateReadout(lastLabel, null, null);
   updateGenerationReadout();
   persistMapState();
