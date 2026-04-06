@@ -1482,7 +1482,7 @@ const pickFirstTowerCandidate = (map, rng) => {
       }
     }
   }
-  const candidates = shoreCandidates.length ? shoreCandidates : edgeCandidates;
+  const candidates = edgeCandidates.length ? edgeCandidates : shoreCandidates;
   if (!candidates.length) {
     return null;
   }
