@@ -122,8 +122,9 @@ const TOWER_START_HEIGHT = 0.15;
 const TOWER_GROW_CHANCE = 0.35;
 const TOWER_GROW_STEP = 0.05;
 const TOWER_BASELINE_WEIGHT = 0.1;
-const TOWER_MAX_HEIGHT_MULT = 1.5;
-const WALL_HEIGHT_FACTOR = 0.5;
+const TOWER_MAX_HEIGHT_MULT = 1;
+const WALL_HEIGHT_FACTOR = 1;
+const WALL_CONNECT_DISTANCE = 6;
 const VILLAGE_STALL_THRESHOLD = 3;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
@@ -1515,6 +1516,71 @@ const canPlaceWallOn = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.dirt ||
   biomeIndex === BIOME_INDEX.forest;
 
+const isWallPathClear = (map, path) => {
+  for (const point of path) {
+    if (!map.inBounds(point.x, point.y)) {
+      return false;
+    }
+    const idx = map.index(point.x, point.y);
+    const biome = map.biomes[idx];
+    if (biome === BIOME_INDEX.tower || biome === BIOME_INDEX.wall) {
+      continue;
+    }
+    if (!canPlaceWallOn(biome)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const placeWallPath = (map, elevationMap, from, to) => {
+  const pathA = traceRoadPath(from, to, true);
+  const pathB = traceRoadPath(from, to, false);
+  let path = null;
+  if (isWallPathClear(map, pathA)) {
+    path = pathA;
+  } else if (isWallPathClear(map, pathB)) {
+    path = pathB;
+  }
+  if (!path) {
+    return false;
+  }
+  const targetHeight = Math.min(map.heights[from.idx], map.heights[to.idx]) * WALL_HEIGHT_FACTOR;
+  for (const point of path) {
+    const idx = map.index(point.x, point.y);
+    if (map.biomes[idx] === BIOME_INDEX.tower) {
+      continue;
+    }
+    if (!canPlaceWallOn(map.biomes[idx]) && map.biomes[idx] !== BIOME_INDEX.wall) {
+      continue;
+    }
+    placeWall(map, elevationMap, point.x, point.y, targetHeight);
+  }
+  return true;
+};
+
+const connectNearbyTowers = (map, elevationMap, towers) => {
+  for (let i = 0; i < towers.length; i += 1) {
+    let closestIndex = -1;
+    let closestDist = Infinity;
+    for (let j = 0; j < towers.length; j += 1) {
+      if (i === j) {
+        continue;
+      }
+      const dist =
+        Math.abs(towers[i].x - towers[j].x) + Math.abs(towers[i].y - towers[j].y);
+      if (dist <= WALL_CONNECT_DISTANCE && dist < closestDist) {
+        closestDist = dist;
+        closestIndex = j;
+      }
+    }
+    if (closestIndex < 0 || i > closestIndex) {
+      continue;
+    }
+    placeWallPath(map, elevationMap, towers[i], towers[closestIndex]);
+  }
+};
+
 const isTowerTooClose = (towers, x, y, minDistance) => {
   for (const tower of towers) {
     const dist = Math.abs(tower.x - x) + Math.abs(tower.y - y);
@@ -1665,6 +1731,7 @@ const placeBorderTowers = (map, elevationMap) => {
         placedTowers.push({ x: candidate.x, y: candidate.y, idx });
       }
       placeWallsForBorder(borderMask);
+      connectNearbyTowers(map, elevationMap, placedTowers);
       continue;
     }
 
@@ -1694,6 +1761,7 @@ const placeBorderTowers = (map, elevationMap) => {
         placedTowers.push({ x: candidate.x, y: candidate.y, idx });
       }
       placeWallsForBorder(borderMask);
+      connectNearbyTowers(map, elevationMap, placedTowers);
     }
   }
 };
