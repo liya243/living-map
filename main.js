@@ -122,7 +122,7 @@ const TOWER_START_HEIGHT = 0.15;
 const TOWER_GROW_CHANCE = 0.35;
 const TOWER_GROW_STEP = 0.05;
 const TOWER_BASELINE_WEIGHT = 0.1;
-const TOWER_MAX_HEIGHT_MULT = 2;
+const TOWER_MAX_HEIGHT_MULT = 1.5;
 const WALL_HEIGHT_FACTOR = 0.5;
 const VILLAGE_STALL_THRESHOLD = 3;
 const FOG_APPEAR_CHANCE = 0.22;
@@ -1728,6 +1728,67 @@ const growTowers = (map, previousMap) => {
   }
 };
 
+const findTowerAlong = (map, x, y, dx, dy) => {
+  const width = map.width;
+  const height = map.height;
+  for (let step = 1; step <= Math.max(width, height); step += 1) {
+    const nx = x + dx * step;
+    const ny = y + dy * step;
+    if (!map.inBounds(nx, ny)) {
+      return null;
+    }
+    const idx = map.index(nx, ny);
+    const biome = map.biomes[idx];
+    if (biome === BIOME_INDEX.tower) {
+      return { idx, x: nx, y: ny };
+    }
+    if (biome !== BIOME_INDEX.wall) {
+      return null;
+    }
+  }
+  return null;
+};
+
+const updateWallsFromTowers = (map, elevationMap) => {
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (map.biomes[idx] !== BIOME_INDEX.wall) {
+        continue;
+      }
+      let targetHeight = null;
+      const left = findTowerAlong(map, x, y, -1, 0);
+      const right = findTowerAlong(map, x, y, 1, 0);
+      if (left && right) {
+        targetHeight =
+          Math.min(map.heights[left.idx], map.heights[right.idx]) * WALL_HEIGHT_FACTOR;
+      } else {
+        const up = findTowerAlong(map, x, y, 0, -1);
+        const down = findTowerAlong(map, x, y, 0, 1);
+        if (up && down) {
+          targetHeight =
+            Math.min(map.heights[up.idx], map.heights[down.idx]) * WALL_HEIGHT_FACTOR;
+        }
+      }
+      if (targetHeight === null) {
+        continue;
+      }
+      const baseline = baselineForGeneration(
+        elevationMap[idx],
+        x,
+        y,
+        map.seed,
+        map.generation,
+      );
+      map.heights[idx] = clamp(
+        targetHeight + baseline * TOWER_BASELINE_WEIGHT,
+        0,
+        1,
+      );
+    }
+  }
+};
+
 const stampGarden = (
   map,
   elevationMap,
@@ -2528,6 +2589,7 @@ const applySpecialBiomes = (map, previousMap) => {
   if (hasPrevious) {
     placeBorderTowers(map, elevationMap);
     growTowers(map, previousMap);
+    updateWallsFromTowers(map, elevationMap);
   }
 
   {
