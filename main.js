@@ -31,7 +31,7 @@ const BIOMES = [
   { name: "garden_pumpkin", color: "#d88a3c" },
   { name: "garden_wheat", color: "#e0c25a" },
   { name: "tower", color: "#4b4d53" },
-  { name: "wall", color: "#4b4d53" },
+  { name: "wall", color: "#8b6a4b" },
 ];
 
 const BIOME_BASE_HEIGHT = [
@@ -125,6 +125,7 @@ const TOWER_BASELINE_WEIGHT = 0.1;
 const TOWER_MAX_HEIGHT_MULT = 1;
 const WALL_HEIGHT_FACTOR = 1;
 const WALL_CONNECT_DISTANCE = 6;
+const BORDER_PADDING = 1;
 const VILLAGE_STALL_THRESHOLD = 3;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
@@ -1516,6 +1517,12 @@ const canPlaceWallOn = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.dirt ||
   biomeIndex === BIOME_INDEX.forest;
 
+const isNearMapEdge = (map, x, y) =>
+  x < BORDER_PADDING ||
+  y < BORDER_PADDING ||
+  x >= map.width - BORDER_PADDING ||
+  y >= map.height - BORDER_PADDING;
+
 const isWallPathClear = (map, path) => {
   for (const point of path) {
     if (!map.inBounds(point.x, point.y)) {
@@ -1547,6 +1554,9 @@ const placeWallPath = (map, elevationMap, from, to) => {
   }
   const targetHeight = Math.min(map.heights[from.idx], map.heights[to.idx]) * WALL_HEIGHT_FACTOR;
   for (const point of path) {
+    if (isNearMapEdge(map, point.x, point.y)) {
+      continue;
+    }
     const idx = map.index(point.x, point.y);
     if (map.biomes[idx] === BIOME_INDEX.tower) {
       continue;
@@ -1721,6 +1731,9 @@ const placeBorderTowers = (map, elevationMap) => {
       shuffleArray(border, rng);
       for (const candidate of border) {
         const idx = candidate.idx;
+        if (isNearMapEdge(map, candidate.x, candidate.y)) {
+          continue;
+        }
         if (!canPlaceTowerOn(map.biomes[idx])) {
           continue;
         }
@@ -1751,6 +1764,9 @@ const placeBorderTowers = (map, elevationMap) => {
       shuffleArray(border, rng);
       for (const candidate of border) {
         const idx = candidate.idx;
+        if (isNearMapEdge(map, candidate.x, candidate.y)) {
+          continue;
+        }
         if (!canPlaceTowerOn(map.biomes[idx])) {
           continue;
         }
