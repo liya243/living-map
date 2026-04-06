@@ -1350,7 +1350,41 @@ const countHousesInStrip = (map, x, y, dir, length, halfWidth) => {
   return count;
 };
 
+const hasHouseInDirection = (map, x, y, dir, maxDistance) => {
+  for (let step = 1; step <= maxDistance; step += 1) {
+    const nx = x + dir.dx * step;
+    const ny = y + dir.dy * step;
+    if (!map.inBounds(nx, ny)) {
+      break;
+    }
+    const idx = map.index(nx, ny);
+    if (isHouseBiome(map.biomes[idx])) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const hasHousesAllSides = (map, x, y) => {
+  const maxDistance = Math.floor(Math.min(map.width, map.height) / 2);
+  const directions = [
+    { dx: 1, dy: 0 },
+    { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: 0, dy: -1 },
+  ];
+  for (const dir of directions) {
+    if (!hasHouseInDirection(map, x, y, dir, maxDistance)) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const isEdgeCandidate = (map, x, y) => {
+  if (hasHousesAllSides(map, x, y)) {
+    return false;
+  }
   const directions = [
     { dx: 1, dy: 0 },
     { dx: -1, dy: 0 },
@@ -1402,6 +1436,9 @@ const hasWaterRun = (map, x, y, dir, steps) => {
 };
 
 const isShoreCandidate = (map, x, y) => {
+  if (hasHousesAllSides(map, x, y)) {
+    return false;
+  }
   if (!hasNeighborWater(map, x, y, 1)) {
     return false;
   }
