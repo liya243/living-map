@@ -204,6 +204,9 @@ const isDevelopmentBiome = (biomeIndex) =>
   isGardenBiome(biomeIndex) ||
   isFortificationBiome(biomeIndex);
 
+const isTowerSettlementBiome = (biomeIndex) =>
+  isHouseBiome(biomeIndex) || isGardenBiome(biomeIndex);
+
 class MapData {
   constructor(width, height, seed) {
     this.width = width;
@@ -1182,6 +1185,26 @@ const hasNearbyHouse = (map, x, y, radius, ignore) => {
   return false;
 };
 
+const hasNearbySettlement = (map, x, y, radius) => {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (isTowerSettlementBiome(map.biomes[idx])) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 const hasNearbyDevelopment = (map, x, y, radius) => {
   for (let dy = -radius; dy <= radius; dy += 1) {
     for (let dx = -radius; dx <= radius; dx += 1) {
@@ -1334,7 +1357,7 @@ const hasHousesAllSides = (map, x, y) => {
         continue;
       }
       const idx = map.index(nx, ny);
-      if (!isHouseBiome(map.biomes[idx])) {
+      if (!isTowerSettlementBiome(map.biomes[idx])) {
         continue;
       }
       if (dx > 0) {
@@ -1411,7 +1434,8 @@ const pickFirstTowerCandidate = (map, rng) => {
       if (
         map.biomes[idx] !== BIOME_INDEX.grass &&
         map.biomes[idx] !== BIOME_INDEX.sand &&
-        map.biomes[idx] !== BIOME_INDEX.dirt
+        map.biomes[idx] !== BIOME_INDEX.dirt &&
+        map.biomes[idx] !== BIOME_INDEX.forest
       ) {
         continue;
       }
@@ -1445,7 +1469,8 @@ const collectTowerCandidates = (map) => {
       if (
         map.biomes[idx] !== BIOME_INDEX.grass &&
         map.biomes[idx] !== BIOME_INDEX.sand &&
-        map.biomes[idx] !== BIOME_INDEX.dirt
+        map.biomes[idx] !== BIOME_INDEX.dirt &&
+        map.biomes[idx] !== BIOME_INDEX.forest
       ) {
         continue;
       }
@@ -1473,7 +1498,8 @@ const collectTowerDebugReasons = (map) => {
       if (
         biomeIndex !== BIOME_INDEX.grass &&
         biomeIndex !== BIOME_INDEX.sand &&
-        biomeIndex !== BIOME_INDEX.dirt
+        biomeIndex !== BIOME_INDEX.dirt &&
+        biomeIndex !== BIOME_INDEX.forest
       ) {
         continue;
       }
@@ -1550,7 +1576,8 @@ const findTowerChainSpot = (map, towers, from, rng) => {
     if (
       map.biomes[idx] !== BIOME_INDEX.grass &&
       map.biomes[idx] !== BIOME_INDEX.sand &&
-      map.biomes[idx] !== BIOME_INDEX.dirt
+      map.biomes[idx] !== BIOME_INDEX.dirt &&
+      map.biomes[idx] !== BIOME_INDEX.forest
     ) {
       continue;
     }
@@ -1677,7 +1704,7 @@ const countTotalHouses = (map) => {
   let count = 0;
   const size = map.width * map.height;
   for (let i = 0; i < size; i += 1) {
-    if (isHouseBiome(map.biomes[i])) {
+    if (isTowerSettlementBiome(map.biomes[i])) {
       count += 1;
     }
   }
@@ -1708,7 +1735,7 @@ const hasNearbyTower = (towers, x, y, minDistance) => {
 };
 
 const hasNeighborHouseAny = (map, x, y) =>
-  hasNearbyHouse(map, x, y, TOWER_NEAR_HOUSE_RADIUS);
+  hasNearbySettlement(map, x, y, TOWER_NEAR_HOUSE_RADIUS);
 
 const placeTower = (map, elevationMap, x, y) => {
   const idx = map.index(x, y);
