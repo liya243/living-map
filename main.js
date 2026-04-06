@@ -126,6 +126,11 @@ const TOWER_MIN_HOUSES = 10;
 const TOWER_EDGE_STRIP_HALF_WIDTH = 1;
 const TOWER_SHORE_DISTANCE = 3;
 const TOWER_EDGE_SCAN_DISTANCE = 7;
+const DEBUG_TOWER_HEIGHT = 0.08;
+const DEBUG_TOWER_LIFT = 0.03;
+const DEBUG_TOWER_OPACITY = 0.65;
+const DEBUG_TOWER_COLOR_EDGE = "#d26bff";
+const DEBUG_TOWER_COLOR_SHORE = "#5fd8ff";
 const WALL_CONNECT_CHANCE = 0.7;
 const WALL_MAX_DISTANCE = 16;
 const FOG_APPEAR_CHANCE = 0.22;
@@ -1454,6 +1459,35 @@ const pickFirstTowerCandidate = (map, rng) => {
     return null;
   }
   return candidates[Math.floor(rng() * candidates.length)];
+};
+
+const collectTowerCandidates = (map) => {
+  const shore = [];
+  const edge = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const idx = map.index(x, y);
+      if (
+        map.biomes[idx] !== BIOME_INDEX.grass &&
+        map.biomes[idx] !== BIOME_INDEX.sand &&
+        map.biomes[idx] !== BIOME_INDEX.dirt
+      ) {
+        continue;
+      }
+      if (!hasNeighborHouseAny(map, x, y)) {
+        continue;
+      }
+      if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
+        continue;
+      }
+      if (isShoreCandidate(map, x, y)) {
+        shore.push({ x, y, idx, kind: "shore" });
+      } else if (isEdgeCandidate(map, x, y)) {
+        edge.push({ x, y, idx, kind: "edge" });
+      }
+    }
+  }
+  return { shore, edge };
 };
 
 const pickOpenDirection = (map, x, y, rng) => {
@@ -2819,6 +2853,8 @@ let updateTileVisual = null;
 let refreshTiles = null;
 let revealMaterial = null;
 let syncFlashMask = null;
+let debugTowerMesh = null;
+let debugTowerMaterial = null;
 const flashMaskTiles = new Float32Array(tileCount);
 const flashState = { active: false, start: 0, duration: FLASH_DURATION };
 const revealState = { active: false, start: 0, duration: REVEAL_DURATION };
@@ -3192,6 +3228,80 @@ const buildMergedTiles = (material) => {
   return { mesh, updateTile, refresh };
 };
 
+const disposeDebugOverlay = () => {
+  if (!debugTowerMesh) {
+    return;
+  }
+  scene.remove(debugTowerMesh);
+  if (debugTowerMesh.geometry) {
+    debugTowerMesh.geometry.dispose();
+  }
+  if (debugTowerMaterial) {
+    debugTowerMaterial.dispose();
+  }
+  debugTowerMesh = null;
+  debugTowerMaterial = null;
+};
+
+const buildDebugOverlay = (candidates) => {
+  disposeDebugOverlay();
+  if (!candidates.length) {
+    return;
+  }
+  const baseGeometry = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  const basePositions = baseGeometry.getAttribute("position").array;
+  const tileStride = basePositions.length;
+  baseGeometry.dispose();
+
+  const positions = new Float32Array(candidates.length * tileStride);
+  const colors = new Float32Array(candidates.length * tileStride);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+  const edgeColor = new THREE.Color(DEBUG_TOWER_COLOR_EDGE);
+  const shoreColor = new THREE.Color(DEBUG_TOWER_COLOR_SHORE);
+
+  for (let t = 0; t < candidates.length; t += 1) {
+    const candidate = candidates[t];
+    const idx = mapData.index(candidate.x, candidate.y);
+    const heightValue = mapData.heights[idx];
+    const biomeIndex = mapData.biomes[idx];
+    const worldHeight = heightToUnits(heightValue, biomeIndex);
+    const xOffset = candidate.x - MAP_WIDTH / 2 + 0.5;
+    const zOffset = candidate.y - MAP_HEIGHT / 2 + 0.5;
+    const bottom = worldHeight + DEBUG_TOWER_LIFT;
+    const color = candidate.kind === "shore" ? shoreColor : edgeColor;
+    const offset = t * tileStride;
+
+    for (let i = 0; i < basePositions.length; i += 3) {
+      const outIndex = offset + i;
+      positions[outIndex] = basePositions[i] + xOffset;
+      positions[outIndex + 1] =
+        bottom + (basePositions[i + 1] + 0.5) * DEBUG_TOWER_HEIGHT;
+      positions[outIndex + 2] = basePositions[i + 2] + zOffset;
+      colors[outIndex] = color.r;
+      colors[outIndex + 1] = color.g;
+      colors[outIndex + 2] = color.b;
+    }
+  }
+
+  debugTowerMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: DEBUG_TOWER_OPACITY,
+    depthWrite: false,
+  });
+  debugTowerMaterial.polygonOffset = true;
+  debugTowerMaterial.polygonOffsetFactor = -1;
+  debugTowerMaterial.polygonOffsetUnits = -1;
+
+  debugTowerMesh = new THREE.Mesh(geometry, debugTowerMaterial);
+  debugTowerMesh.frustumCulled = false;
+  debugTowerMesh.renderOrder = 2;
+  scene.add(debugTowerMesh);
+};
+
 const disposeTileMesh = (mesh) => {
   if (!mesh) {
     return;
@@ -3210,6 +3320,18 @@ const disposeTileMesh = (mesh) => {
       mesh.material.dispose();
     }
   }
+};
+
+let debugTowersEnabled = false;
+
+const refreshDebugOverlay = () => {
+  if (!debugTowersEnabled) {
+    disposeDebugOverlay();
+    return;
+  }
+  const { shore, edge } = collectTowerCandidates(mapData);
+  const candidates = edge.length ? [...edge, ...shore] : shore;
+  buildDebugOverlay(candidates);
 };
 
 const getStoredRenderer = () => {
@@ -3252,8 +3374,14 @@ const setRendererMode = (mode, persist = true, warning = "") => {
   const tiles =
     rendererMode === "instanced" ? buildInstancedTiles(material) : buildMergedTiles(material);
   tileMesh = tiles.mesh;
-  updateTileVisual = tiles.updateTile;
-  refreshTiles = tiles.refresh;
+  updateTileVisual = (x, y, markDirty = true) => {
+    tiles.updateTile(x, y, markDirty);
+    refreshDebugOverlay();
+  };
+  refreshTiles = () => {
+    tiles.refresh();
+    refreshDebugOverlay();
+  };
   refreshTiles();
   if (syncFlashMask) {
     syncFlashMask();
@@ -3283,6 +3411,7 @@ const clearButton = document.getElementById("clear");
 const playButton = document.getElementById("play");
 const recordButton = document.getElementById("record");
 const rendererNote = document.getElementById("renderer-note");
+const debugTowersToggle = document.getElementById("debug-towers");
 let lastNoteUpdate = 0;
 let fallbackChecked = false;
 let fallbackFrames = 0;
@@ -3312,6 +3441,14 @@ if (rendererSelect) {
     rendererSelect.value = rendererMode;
     fallbackChecked = false;
     fallbackFrames = 0;
+  });
+}
+
+if (debugTowersToggle) {
+  debugTowersToggle.checked = debugTowersEnabled;
+  debugTowersToggle.addEventListener("change", () => {
+    debugTowersEnabled = debugTowersToggle.checked;
+    refreshDebugOverlay();
   });
 }
 

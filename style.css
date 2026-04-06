@@ -146,6 +146,27 @@ label {
   gap: 6px;
 }
 
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+
+.toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.toggle span {
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.85rem;
+}
+
 input,
 select,
 button {
