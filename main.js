@@ -118,7 +118,7 @@ const GARDEN_TRIES = 10;
 const TOWER_SPAWN_CHANCE = 0.08;
 const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 3;
-const TOWER_MIN_HOUSES = HOUSE_GROW_MAX_NEARBY;
+const TOWER_MIN_HOUSES = 6;
 const WALL_CONNECT_CHANCE = 0.7;
 const WALL_MAX_DISTANCE = 16;
 const FOG_APPEAR_CHANCE = 0.22;
@@ -1251,6 +1251,54 @@ const countNearbyHouses = (map, x, y, radius) => {
   return count;
 };
 
+const hasAvailableHouseSpot = (map, originX, originY, radius, spacingRadius = 0) => {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      const x = originX + dx;
+      const y = originY + dy;
+      if (!map.inBounds(x, y)) {
+        continue;
+      }
+      const idx = map.index(x, y);
+      if (map.biomes[idx] !== BIOME_INDEX.grass) {
+        continue;
+      }
+      if (spacingRadius > 0 && hasNearbyHouse(map, x, y, spacingRadius)) {
+        continue;
+      }
+      return true;
+    }
+  }
+  return false;
+};
+
+const isVillageMaxed = (map, centerX, centerY, radius) => {
+  let houseCount = 0;
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const x = centerX + dx;
+      const y = centerY + dy;
+      if (!map.inBounds(x, y)) {
+        continue;
+      }
+      const idx = map.index(x, y);
+      if (!isHouseBiome(map.biomes[idx])) {
+        continue;
+      }
+      houseCount += 1;
+      if (countNearbyHouses(map, x, y, HOUSE_GROW_MAX_RADIUS) < HOUSE_GROW_MAX_NEARBY) {
+        if (hasAvailableHouseSpot(map, x, y, HOUSE_GROW_RADIUS, 1)) {
+          return false;
+        }
+      }
+    }
+  }
+  return houseCount >= TOWER_MIN_HOUSES;
+};
+
 const placeBigHouse = (map, elevationMap, originX, originY, rng) => {
   const directions = [
     { dx: 1, dy: 0 },
@@ -2277,7 +2325,7 @@ const applySpecialBiomes = (map, previousMap) => {
         if (!hasNeighborHouseAny(map, x, y)) {
           continue;
         }
-        if (countNearbyHouses(map, x, y, TOWER_HOUSE_RADIUS) < TOWER_MIN_HOUSES) {
+        if (!isVillageMaxed(map, x, y, TOWER_HOUSE_RADIUS)) {
           continue;
         }
         if (hasNearbyTower(towers, x, y, TOWER_MIN_DISTANCE)) {
