@@ -124,6 +124,9 @@ const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 5;
 const TOWER_MIN_HOUSES = 10;
 const TOWER_EDGE_CLEAR_DISTANCE = 6;
+const TOWER_EDGE_STRIP_HALF_WIDTH = 1;
+const TOWER_EDGE_OPEN_MAX = 1;
+const TOWER_EDGE_BACK_MIN = 3;
 const TOWER_SHORE_DISTANCE = 3;
 const TOWER_EDGE_SCAN_DISTANCE = 7;
 const WALL_CONNECT_CHANCE = 0.7;
@@ -1329,19 +1332,22 @@ const isVillageMaxed = (map, centerX, centerY, radius) => {
   return houseCount >= TOWER_MIN_HOUSES;
 };
 
-const hasOpenRun = (map, x, y, dir, steps) => {
-  for (let step = 1; step <= steps; step += 1) {
-    const nx = x + dir.dx * step;
-    const ny = y + dir.dy * step;
-    if (!map.inBounds(nx, ny)) {
-      return true;
-    }
-    const idx = map.index(nx, ny);
-    if (isDevelopmentBiome(map.biomes[idx])) {
-      return false;
+const countHousesInStrip = (map, x, y, dir, length, halfWidth) => {
+  let count = 0;
+  for (let step = 1; step <= length; step += 1) {
+    for (let offset = -halfWidth; offset <= halfWidth; offset += 1) {
+      const nx = dir.dx !== 0 ? x + dir.dx * step : x + offset;
+      const ny = dir.dx !== 0 ? y + offset : y + dir.dy * step;
+      if (!map.inBounds(nx, ny)) {
+        continue;
+      }
+      const idx = map.index(nx, ny);
+      if (isHouseBiome(map.biomes[idx])) {
+        count += 1;
+      }
     }
   }
-  return true;
+  return count;
 };
 
 const isEdgeCandidate = (map, x, y) => {
@@ -1352,9 +1358,30 @@ const isEdgeCandidate = (map, x, y) => {
     { dx: 0, dy: -1 },
   ];
   for (const dir of directions) {
-    if (hasOpenRun(map, x, y, dir, TOWER_EDGE_CLEAR_DISTANCE)) {
-      return true;
+    const openHouses = countHousesInStrip(
+      map,
+      x,
+      y,
+      dir,
+      TOWER_EDGE_CLEAR_DISTANCE,
+      TOWER_EDGE_STRIP_HALF_WIDTH,
+    );
+    if (openHouses > TOWER_EDGE_OPEN_MAX) {
+      continue;
     }
+    const opposite = { dx: -dir.dx, dy: -dir.dy };
+    const backHouses = countHousesInStrip(
+      map,
+      x,
+      y,
+      opposite,
+      TOWER_EDGE_CLEAR_DISTANCE,
+      TOWER_EDGE_STRIP_HALF_WIDTH,
+    );
+    if (backHouses < TOWER_EDGE_BACK_MIN) {
+      continue;
+    }
+    return true;
   }
   return false;
 };
@@ -1435,17 +1462,16 @@ const pickOpenDirection = (map, x, y, rng) => {
   let bestScore = Infinity;
   let candidates = [];
   for (const dir of directions) {
-    let score = 0;
-    for (let step = 1; step <= TOWER_EDGE_SCAN_DISTANCE; step += 1) {
-      const nx = x + dir.dx * step;
-      const ny = y + dir.dy * step;
-      if (!map.inBounds(nx, ny)) {
-        break;
-      }
-      const idx = map.index(nx, ny);
-      if (isDevelopmentBiome(map.biomes[idx])) {
-        score += 1;
-      }
+    let score = countHousesInStrip(
+      map,
+      x,
+      y,
+      dir,
+      TOWER_EDGE_SCAN_DISTANCE,
+      TOWER_EDGE_STRIP_HALF_WIDTH,
+    );
+    if (hasWaterRun(map, x, y, dir, 2)) {
+      score -= 0.5;
     }
     if (score < bestScore) {
       bestScore = score;
