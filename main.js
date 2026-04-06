@@ -31,7 +31,7 @@ const BIOMES = [
   { name: "garden_pumpkin", color: "#d88a3c" },
   { name: "garden_wheat", color: "#e0c25a" },
   { name: "tower", color: "#4b4d53" },
-  { name: "wall", color: "#595b60" },
+  { name: "wall", color: "#4b4d53" },
 ];
 
 const BIOME_BASE_HEIGHT = [
@@ -118,11 +118,12 @@ const GARDEN_TRIES = 10;
 const TOWER_EXPAND_RADIUS = 4;
 const TOWER_BORDER_SPACING = 3;
 const TOWER_MIN_VILLAGE_AREA = 400;
-const TOWER_START_HEIGHT = 0.2;
+const TOWER_START_HEIGHT = 0.15;
 const TOWER_GROW_CHANCE = 0.35;
 const TOWER_GROW_STEP = 0.05;
 const TOWER_BASELINE_WEIGHT = 0.1;
 const TOWER_MAX_HEIGHT_MULT = 2;
+const WALL_HEIGHT_FACTOR = 0.5;
 const VILLAGE_STALL_THRESHOLD = 3;
 const FOG_APPEAR_CHANCE = 0.22;
 const FOG_DISAPPEAR_CHANCE = 0.22;
@@ -270,6 +271,19 @@ class MapData {
     return map;
   }
 }
+
+const cloneMapData = (source) => {
+  const map = new MapData(source.width, source.height, source.seed);
+  map.generation = source.generation;
+  map.heightMode = source.heightMode;
+  map.villageStall = Number.isFinite(source.villageStall) ? source.villageStall : 0;
+  map.heights.set(source.heights);
+  map.biomes.set(source.biomes);
+  if (source.fog && source.fog.length === map.fog.length) {
+    map.fog.set(source.fog);
+  }
+  return map;
+};
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1495,6 +1509,12 @@ const canPlaceTowerOn = (biomeIndex) =>
   biomeIndex === BIOME_INDEX.dirt ||
   biomeIndex === BIOME_INDEX.forest;
 
+const canPlaceWallOn = (biomeIndex) =>
+  biomeIndex === BIOME_INDEX.grass ||
+  biomeIndex === BIOME_INDEX.sand ||
+  biomeIndex === BIOME_INDEX.dirt ||
+  biomeIndex === BIOME_INDEX.forest;
+
 const isTowerTooClose = (towers, x, y, minDistance) => {
   for (const tower of towers) {
     const dist = Math.abs(tower.x - x) + Math.abs(tower.y - y);
@@ -1514,6 +1534,13 @@ const placeTower = (map, elevationMap, x, y) => {
     0,
     1,
   );
+};
+
+const placeWall = (map, elevationMap, x, y, heightValue) => {
+  const idx = map.index(x, y);
+  map.biomes[idx] = BIOME_INDEX.wall;
+  const baseline = baselineForGeneration(elevationMap[idx], x, y, map.seed, map.generation);
+  map.heights[idx] = clamp(heightValue + baseline * TOWER_BASELINE_WEIGHT, 0, 1);
 };
 
 const placeBorderTowers = (map, elevationMap) => {
@@ -1536,9 +1563,95 @@ const placeBorderTowers = (map, elevationMap) => {
     }
   }
   const rng = mulberry32(map.seed + map.generation * 4229);
+  const placeWallsForBorder = (borderMask) => {
+    const width = map.width;
+    const height = map.height;
+    // Horizontal segments
+    for (let y = 0; y < height; y += 1) {
+      let x = 0;
+      while (x < width) {
+        const startIdx = y * width + x;
+        if (!borderMask[startIdx]) {
+          x += 1;
+          continue;
+        }
+        const start = x;
+        while (x < width && borderMask[y * width + x]) {
+          x += 1;
+        }
+        const end = x - 1;
+        const towers = [];
+        for (let xi = start; xi <= end; xi += 1) {
+          const idx = y * width + xi;
+          if (map.biomes[idx] === BIOME_INDEX.tower) {
+            towers.push({ x: xi, idx });
+          }
+        }
+        for (let i = 0; i < towers.length - 1; i += 1) {
+          const from = towers[i];
+          const to = towers[i + 1];
+          const targetHeight = Math.min(map.heights[from.idx], map.heights[to.idx]) * WALL_HEIGHT_FACTOR;
+          for (let xi = from.x + 1; xi < to.x; xi += 1) {
+            const idx = y * width + xi;
+            if (map.biomes[idx] === BIOME_INDEX.tower) {
+              continue;
+            }
+            if (!canPlaceWallOn(map.biomes[idx])) {
+              continue;
+            }
+            placeWall(map, elevationMap, xi, y, targetHeight);
+          }
+        }
+      }
+    }
+
+    // Vertical segments
+    for (let x = 0; x < width; x += 1) {
+      let y = 0;
+      while (y < height) {
+        const startIdx = y * width + x;
+        if (!borderMask[startIdx]) {
+          y += 1;
+          continue;
+        }
+        const start = y;
+        while (y < height && borderMask[y * width + x]) {
+          y += 1;
+        }
+        const end = y - 1;
+        const towers = [];
+        for (let yi = start; yi <= end; yi += 1) {
+          const idx = yi * width + x;
+          if (map.biomes[idx] === BIOME_INDEX.tower) {
+            towers.push({ y: yi, idx });
+          }
+        }
+        for (let i = 0; i < towers.length - 1; i += 1) {
+          const from = towers[i];
+          const to = towers[i + 1];
+          const targetHeight = Math.min(map.heights[from.idx], map.heights[to.idx]) * WALL_HEIGHT_FACTOR;
+          for (let yi = from.y + 1; yi < to.y; yi += 1) {
+            const idx = yi * width + x;
+            if (map.biomes[idx] === BIOME_INDEX.tower) {
+              continue;
+            }
+            if (!canPlaceWallOn(map.biomes[idx])) {
+              continue;
+            }
+            placeWall(map, elevationMap, x, yi, targetHeight);
+          }
+        }
+      }
+    }
+  };
+
   for (const expandedComponent of expandedComponents) {
     if (expandedComponent.length >= TOWER_MIN_VILLAGE_AREA) {
       const border = collectComponentBorder(map, expandedMask, expandedComponent);
+      const borderMask = new Uint8Array(map.width * map.height);
+      for (const tile of border) {
+        borderMask[tile.idx] = 1;
+      }
       shuffleArray(border, rng);
       for (const candidate of border) {
         const idx = candidate.idx;
@@ -1551,6 +1664,7 @@ const placeBorderTowers = (map, elevationMap) => {
         placeTower(map, elevationMap, candidate.x, candidate.y);
         placedTowers.push({ x: candidate.x, y: candidate.y, idx });
       }
+      placeWallsForBorder(borderMask);
       continue;
     }
 
@@ -1563,6 +1677,10 @@ const placeBorderTowers = (map, elevationMap) => {
     const baseComponents = collectVillageComponents(map, baseSubMask);
     for (const baseComponent of baseComponents) {
       const border = collectComponentBorder(map, baseSubMask, baseComponent);
+      const borderMask = new Uint8Array(map.width * map.height);
+      for (const tile of border) {
+        borderMask[tile.idx] = 1;
+      }
       shuffleArray(border, rng);
       for (const candidate of border) {
         const idx = candidate.idx;
@@ -1575,6 +1693,7 @@ const placeBorderTowers = (map, elevationMap) => {
         placeTower(map, elevationMap, candidate.x, candidate.y);
         placedTowers.push({ x: candidate.x, y: candidate.y, idx });
       }
+      placeWallsForBorder(borderMask);
     }
   }
 };
@@ -2580,7 +2699,7 @@ const colorForBiome = (biomeIndex, heightValue, fogValue = 0, x = 0, y = 0, seed
 const revealJitterFor = (x, y, seed) => hash2(x, y, seed + 7421);
 
 const evolveMapData = (sourceMap, generationIndex) => {
-  const map = MapData.fromJSON(sourceMap.serialize());
+  const map = cloneMapData(sourceMap);
   map.generation = generationIndex;
   applyLayeredHeights(map);
   applySpecialBiomes(map, sourceMap);
