@@ -1499,8 +1499,8 @@ const placeTower = (map, elevationMap, x, y) => {
 const placeBorderTowers = (map, elevationMap) => {
   const baseMask = buildVillageMask(map);
   const expandedMask = expandVillageMask(map, baseMask, TOWER_EXPAND_RADIUS);
-  const components = collectVillageComponents(map, expandedMask);
-  if (!components.length) {
+  const expandedComponents = collectVillageComponents(map, expandedMask);
+  if (!expandedComponents.length) {
     return;
   }
   const placedTowers = [];
@@ -1513,22 +1513,45 @@ const placeBorderTowers = (map, elevationMap) => {
     }
   }
   const rng = mulberry32(map.seed + map.generation * 4229);
-  for (const component of components) {
-    if (component.length < TOWER_MIN_VILLAGE_AREA) {
+  for (const expandedComponent of expandedComponents) {
+    if (expandedComponent.length >= TOWER_MIN_VILLAGE_AREA) {
+      const border = collectComponentBorder(map, expandedMask, expandedComponent);
+      shuffleArray(border, rng);
+      for (const candidate of border) {
+        const idx = candidate.idx;
+        if (!canPlaceTowerOn(map.biomes[idx])) {
+          continue;
+        }
+        if (isTowerTooClose(placedTowers, candidate.x, candidate.y, TOWER_BORDER_SPACING)) {
+          continue;
+        }
+        placeTower(map, elevationMap, candidate.x, candidate.y);
+        placedTowers.push({ x: candidate.x, y: candidate.y, idx });
+      }
       continue;
     }
-    const border = collectComponentBorder(map, expandedMask, component);
-    shuffleArray(border, rng);
-    for (const candidate of border) {
-      const idx = candidate.idx;
-      if (!canPlaceTowerOn(map.biomes[idx])) {
-        continue;
+
+    const baseSubMask = new Uint8Array(map.width * map.height);
+    for (const idx of expandedComponent) {
+      if (baseMask[idx]) {
+        baseSubMask[idx] = 1;
       }
-      if (isTowerTooClose(placedTowers, candidate.x, candidate.y, TOWER_BORDER_SPACING)) {
-        continue;
+    }
+    const baseComponents = collectVillageComponents(map, baseSubMask);
+    for (const baseComponent of baseComponents) {
+      const border = collectComponentBorder(map, baseSubMask, baseComponent);
+      shuffleArray(border, rng);
+      for (const candidate of border) {
+        const idx = candidate.idx;
+        if (!canPlaceTowerOn(map.biomes[idx])) {
+          continue;
+        }
+        if (isTowerTooClose(placedTowers, candidate.x, candidate.y, TOWER_BORDER_SPACING)) {
+          continue;
+        }
+        placeTower(map, elevationMap, candidate.x, candidate.y);
+        placedTowers.push({ x: candidate.x, y: candidate.y, idx });
       }
-      placeTower(map, elevationMap, candidate.x, candidate.y);
-      placedTowers.push({ x: candidate.x, y: candidate.y, idx });
     }
   }
 };
