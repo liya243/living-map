@@ -115,7 +115,7 @@ const GARDEN_MAX_PER_GEN = 2;
 const GARDEN_NEAR_ROAD_RADIUS = 1;
 const GARDEN_SHAPE_RECT_CHANCE = 0.55;
 const GARDEN_TRIES = 10;
-const TOWER_SEED_CHANCE = 0.12;
+const TOWER_SEED_CHANCE = 0.9;
 const TOWER_CHAIN_CHANCE = 0.65;
 const TOWER_CHAIN_DISTANCE_MIN = 2;
 const TOWER_CHAIN_DISTANCE_MAX = 4;
@@ -125,6 +125,7 @@ const TOWER_MIN_DISTANCE = 6;
 const TOWER_HOUSE_RADIUS = 5;
 const TOWER_GLOBAL_MIN_HOUSES = 20;
 const TOWER_EDGE_STRIP_HALF_WIDTH = 1;
+const TOWER_SIDE_RADIUS = 20;
 const TOWER_SHORE_DISTANCE = 3;
 const TOWER_EDGE_SCAN_DISTANCE = 7;
 const DEBUG_TOWER_HEIGHT = 0.08;
@@ -1313,37 +1314,45 @@ const countHousesInStrip = (map, x, y, dir, length, halfWidth) => {
   return count;
 };
 
-const hasHouseInDirection = (map, x, y, dir, maxDistance, halfWidth) => {
-  for (let step = 1; step <= maxDistance; step += 1) {
-    for (let offset = -halfWidth; offset <= halfWidth; offset += 1) {
-      const nx = dir.dx !== 0 ? x + dir.dx * step : x + offset;
-      const ny = dir.dx !== 0 ? y + offset : y + dir.dy * step;
+const hasHousesAllSides = (map, x, y) => {
+  let right = false;
+  let left = false;
+  let up = false;
+  let down = false;
+  const radiusSq = TOWER_SIDE_RADIUS * TOWER_SIDE_RADIUS;
+  for (let dy = -TOWER_SIDE_RADIUS; dy <= TOWER_SIDE_RADIUS; dy += 1) {
+    for (let dx = -TOWER_SIDE_RADIUS; dx <= TOWER_SIDE_RADIUS; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
+      if (dx * dx + dy * dy > radiusSq) {
+        continue;
+      }
+      const nx = x + dx;
+      const ny = y + dy;
       if (!map.inBounds(nx, ny)) {
         continue;
       }
       const idx = map.index(nx, ny);
-      if (isHouseBiome(map.biomes[idx])) {
+      if (!isHouseBiome(map.biomes[idx])) {
+        continue;
+      }
+      if (dx > 0) {
+        right = true;
+      } else if (dx < 0) {
+        left = true;
+      }
+      if (dy > 0) {
+        down = true;
+      } else if (dy < 0) {
+        up = true;
+      }
+      if (right && left && up && down) {
         return true;
       }
     }
   }
   return false;
-};
-
-const hasHousesAllSides = (map, x, y) => {
-  const maxDistance = Math.floor(Math.min(map.width, map.height) / 2);
-  const directions = [
-    { dx: 1, dy: 0 },
-    { dx: -1, dy: 0 },
-    { dx: 0, dy: 1 },
-    { dx: 0, dy: -1 },
-  ];
-  for (const dir of directions) {
-    if (!hasHouseInDirection(map, x, y, dir, maxDistance, TOWER_EDGE_STRIP_HALF_WIDTH)) {
-      return false;
-    }
-  }
-  return true;
 };
 
 const isEdgeCandidate = (map, x, y) => {
